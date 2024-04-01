@@ -62,9 +62,7 @@ OB_PREOP_CALLBACK_STATUS on_pre_open(
 ) {
 	UNREFERENCED_PARAMETER(RegistrationContext);
 	//内核访问 直接放行
-	if (OperationInformation->KernelHandle) {
-		return OB_PREOP_SUCCESS;
-	}
+	
 	PVOID process = OperationInformation->Object;
 	ULONG pid =  HandleToULong(PsGetProcessId(process));
 	if (check_in_protect_list(pid)) {
