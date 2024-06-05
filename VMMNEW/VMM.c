@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <ntddk.h>
 #include <intrin.h>
 #include "VMM.h"
@@ -6,7 +6,7 @@
 #include "msr.h"
 static BOOLEAN need_off = FALSE;
 BOOLEAN allocate_vmxon(struct VMM_STATE* vmm_state) {
-	//½µµÍIRQL
+	//é™ä½IRQL
 	if (KeGetCurrentIrql() > DISPATCH_LEVEL) {
 		KeRaiseIrqlToDpcLevel();
 	}
@@ -89,7 +89,7 @@ BOOLEAN init_vmx() {
 	}
 	KAFFINITY ka;
 	for (ULONG32 i = 0; i < cpu_count; i++) {
-		ka = (KAFFINITY)2 ^ i;//Ã¿¸ö´¦ÀíÆ÷µÄÑÚÂë
+		ka = (KAFFINITY)2 ^ i;//æ¯ä¸ªå¤„ç†å™¨çš„æ©ç 
 		KeSetSystemAffinityThread(ka);
 		enable_vmx();
 		KdPrint(("[prefix] enable vmx success on process %u\n", i));
@@ -147,9 +147,9 @@ BOOLEAN setup_vmcs(struct VMM_STATE* vmm_state_ptr, union EXTENDED_PAGE_TABLE_PO
 	__vmx_vmwrite(GUEST_CR0, __readcr0());
 	__vmx_vmwrite(GUEST_CR3, __readcr3());
 	__vmx_vmwrite(GUEST_CR4, __readcr4());
-	__vmx_vmwrite(GUEST_DR7, 0x400ULL);//Ó²¼şµ÷ÊÔ¼Ä´æÆ÷
+	__vmx_vmwrite(GUEST_DR7, 0x400ULL);//ç¡¬ä»¶è°ƒè¯•å¯„å­˜å™¨
 	__vmx_vmwrite(GUEST_RSP, (vmm_state_ptr->vmm_stack + VMM_STACK_SIZE - 1));
-	__vmx_vmwrite(GUEST_RIP, (ULONG64)1);//ÕâÀïĞèÒª¶¼ÊÇĞéÄâµØÖ·£¬ÒòÎªcr3ÖĞ¿ªÆôÁË·ÖÒ³
+	__vmx_vmwrite(GUEST_RIP, (ULONG64)1);//è¿™é‡Œéœ€è¦éƒ½æ˜¯è™šæ‹Ÿåœ°å€ï¼Œå› ä¸ºcr3ä¸­å¼€å¯äº†åˆ†é¡µ
 }
 BOOLEAN launch_vmx(struct VMM_STATE* vmm_state_ptr, int process_id, union EXTENDED_PAGE_TABLE_POINTER* eptp) {
 	KdPrint(("----launch vmx----\n"));
@@ -158,13 +158,13 @@ BOOLEAN launch_vmx(struct VMM_STATE* vmm_state_ptr, int process_id, union EXTEND
 	KdPrint(("current thread is executing in %d logical process\n", process_id));
 	PAGED_CODE();
 	
-	//ÎªVMM·ÖÅäÕ»£¬ÀíÂÛÉÏ£¬¿ªÆôVMXON¾ÍÊÇÔÚVMMÁË£¬ÓÃµÄÕ»ÊÇµ±Ç°µÄss rsp£¬
-	//µ«ÊÇÎÒÃÇÏ£ÍûVMMÊ¹ÓÃĞÂÕ»£¬Òò´ËÖØĞÂ·ÖÅäÒ»¸ö£¬·ÅÔÚvmcsµÄhost dataÖĞ£¬µ±µÚÒ»´Îvm exitºó£¬
-	//Ê¹ÓÃĞÂ·ÖÅäµÄ×÷Îªrsp
-	//ĞèÒª×¢ÒâµÄÊÇ£¬ÕâÀïĞèÒªµÄvmm_stack ÊÇvmmÀïµÄĞéÄâµØÖ·
-	//ÎÒÃÇµÄvmmÊÇwindows»·¾³ÏÂµÄÇı¶¯³ÌĞò£¬Òò´ËÊ¹ÓÃµÄcr3ÊÇÏµÍ³½ø³ÌµÄcr3
-	//Òò´ËÕâÀïµÄĞéÄâµØÖ·¾ÍÊÇallocate·ÖÅäÏÂÀ´µÄµØÖ·¡£
-	//¼ÙÉèÎÒÃÇ½øÈëguestºó£¬¼ÌĞøÖ´ĞĞÊ£ÓàµÄ´úÂë£¬Õâ¸öÊ±ºòµÄwindows¾ÍÊÇguestÁË¡£
+	//ä¸ºVMMåˆ†é…æ ˆï¼Œç†è®ºä¸Šï¼Œå¼€å¯VMXONå°±æ˜¯åœ¨VMMäº†ï¼Œç”¨çš„æ ˆæ˜¯å½“å‰çš„ss rspï¼Œ
+	//ä½†æ˜¯æˆ‘ä»¬å¸Œæœ›VMMä½¿ç”¨æ–°æ ˆï¼Œå› æ­¤é‡æ–°åˆ†é…ä¸€ä¸ªï¼Œæ”¾åœ¨vmcsçš„host dataä¸­ï¼Œå½“ç¬¬ä¸€æ¬¡vm exitåï¼Œ
+	//ä½¿ç”¨æ–°åˆ†é…çš„ä½œä¸ºrsp
+	//éœ€è¦æ³¨æ„çš„æ˜¯ï¼Œè¿™é‡Œéœ€è¦çš„vmm_stack æ˜¯vmmé‡Œçš„è™šæ‹Ÿåœ°å€
+	//æˆ‘ä»¬çš„vmmæ˜¯windowsç¯å¢ƒä¸‹çš„é©±åŠ¨ç¨‹åºï¼Œå› æ­¤ä½¿ç”¨çš„cr3æ˜¯ç³»ç»Ÿè¿›ç¨‹çš„cr3
+	//å› æ­¤è¿™é‡Œçš„è™šæ‹Ÿåœ°å€å°±æ˜¯allocateåˆ†é…ä¸‹æ¥çš„åœ°å€ã€‚
+	//å‡è®¾æˆ‘ä»¬è¿›å…¥gueståï¼Œç»§ç»­æ‰§è¡Œå‰©ä½™çš„ä»£ç ï¼Œè¿™ä¸ªæ—¶å€™çš„windowså°±æ˜¯guestäº†ã€‚
 
 	ULONG64 vmm_stack_va = ExAllocatePoolWithTag(NonPagedPool, VMM_STACK_SIZE, DRIVER_TAG);
 	if (vmm_stack_va==NULL) {
@@ -174,8 +174,8 @@ BOOLEAN launch_vmx(struct VMM_STATE* vmm_state_ptr, int process_id, union EXTEND
 	RtlZeroMemory(vmm_stack_va, VMM_STACK_SIZE);
 	vmm_state_ptr->vmm_stack = vmm_stack_va;
 
-	//·ÖÅämsrbitmap,¸ù¾İintelÊÖ²á£¬ vmcsÀï±£´æÒ»¸ömsrbitmapÎïÀíÄÚ´æÖ¸Õë
-	//Ö¸ÏòÒ»¸ö4kbµÄÇøÓò
+	//åˆ†é…msrbitmap,æ ¹æ®intelæ‰‹å†Œï¼Œ vmcsé‡Œä¿å­˜ä¸€ä¸ªmsrbitmapç‰©ç†å†…å­˜æŒ‡é’ˆ
+	//æŒ‡å‘ä¸€ä¸ª4kbçš„åŒºåŸŸ
 	ULONG64 msr_bitmap = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, DRIVER_TAG);
 	if (msr_bitmap == NULL) {
 		KdPrint(("allocate msr bitmaps fail\n"));
