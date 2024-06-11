@@ -6,6 +6,8 @@
 #define ALIGNED_SIZE 4096
 #define VMM_STACK_SIZE 4096
 
+
+
 enum VMCS_FIELDS
 {
     GUEST_ES_SELECTOR = 0x00000800,
@@ -153,6 +155,34 @@ struct VMM_STATE {
 	ULONG64 msr_bitmaps_pa;
 };
 
+union SEGMENT_ATTRIBUTES
+{
+    USHORT UCHARs;
+    struct
+    {
+        USHORT TYPE : 4; /* 0;  Bit 40-43 */
+        USHORT S : 1;    /* 4;  Bit 44 */
+        USHORT DPL : 2;  /* 5;  Bit 45-46 */
+        USHORT P : 1;    /* 7;  Bit 47 */
+        USHORT GAP : 4;
+        USHORT AVL : 1; /* 8;  Bit 52 */
+        USHORT L : 1;   /* 9;  Bit 53 */
+        USHORT DB : 1;  /* 10; Bit 54 */
+        USHORT G : 1;   /* 11; Bit 55 */
+        
+
+    } Fields;
+} ;
+
+struct SEGMENT_DESCRIPTOR
+{
+    USHORT             SEL;
+    union SEGMENT_ATTRIBUTES ATTRIBUTES;
+    ULONG32            LIMIT;
+    ULONG64            BASE;
+};
+ULONG64 g_vitual_guest_memory_addr;
+
 BOOLEAN allocate_vmxon(struct VMM_STATE* vmm_state);
 BOOLEAN allocate_vmcs(struct VMM_STATE* vmm_state);
 BOOLEAN enable_vmx();
@@ -162,3 +192,4 @@ ULONG64 vm_ptr_store();
 BOOLEAN clear_vm_state(struct VMM_STATE* vmm_state_ptr);
 BOOLEAN vm_ptr_load(struct VMM_STATE* vmm_state_ptr);
 BOOLEAN launch_vmx(struct VMM_STATE* vmm_state_ptr,int process_id,union EXTENDED_PAGE_TABLE_POINTER* eptp);
+VOID vmx_resume_instruction();

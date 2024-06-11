@@ -105,7 +105,9 @@
     <ClInclude Include="VMM.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="func.asm" />
+    <MASM Include="func.asm">
+      <FileType>Document</FileType>
+    </MASM>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="EPT.c" />

@@ -1,8 +1,8 @@
 #include <ntddk.h>
 #include "EPT.h"
 #include "tool.h"
+ULONG64 g_guest_memory = 0;
 
-ULONG64 g_guest_machine_addr=0;
 ULONG64 init_eptp() {
 	PAGED_CODE();//只在《=2 irql上运行
 	union EXTENDED_PAGE_TABLE_POINTER* ret = (union EXTENDED_PAGE_TABLE_POINTER*)ExAllocatePoolWithTag(
@@ -65,20 +65,13 @@ ULONG64 init_eptp() {
 		return NULL;
 	}
 	RtlZeroMemory((PVOID)pml1_table, PAGE_SIZE);
-	const int pages_to_allocate = 100;
-	ULONG64 guest_memory = ExAllocatePoolWithTag(
-		NonPagedPool,
-		pages_to_allocate * PAGE_SIZE,
-		DRIVER_TAG
-	);
-	if (!guest_memory) {
-		ExFreePoolWithTag(ret, DRIVER_TAG);
-		ExFreePoolWithTag(pml4_table, DRIVER_TAG);
-		ExFreePoolWithTag(pml3_table, DRIVER_TAG);
-		ExFreePoolWithTag(pml2_table, DRIVER_TAG);
-		ExFreePoolWithTag(pml1_table, DRIVER_TAG);
+
+	const ULONG64 pages_to_allocate = 100;
+	g_guest_memory = ExAllocatePoolWithTag(NonPagedPool, pages_to_allocate * PAGE_SIZE, DRIVER_TAG);
+	if (!g_guest_memory) {
 		return NULL;
 	}
+	RtlFillMemory((PVOID)g_guest_memory, 100 * PAGE_SIZE, 0xf4);
 	for (int i = 0; i < pages_to_allocate; i++) {
 		pml1_table[i].fields.read_access = 1;
 		pml1_table[i].fields.write_access = 1;
@@ -88,7 +81,7 @@ ULONG64 init_eptp() {
 		pml1_table[i].fields.dirty_flag = 0;
 		pml1_table[i].fields.write_dirty_flag = 0;
 		pml1_table[i].fields.user_mode_execute_access = 0;
-		ULONG64 pa = vitual_to_physical(guest_memory + i * PAGE_SIZE);
+		ULONG64 pa = vitual_to_physical(g_guest_memory + i * PAGE_SIZE);
 		pa = pa >> 12;
 		pml1_table[i].fields.referenced_pa = pa;
 	}
@@ -118,6 +111,6 @@ ULONG64 init_eptp() {
 	ret->fields.ept_page_walk_length = 3;
 	ret->fields.ept_paging_struct_cache_type = 6;
 
-	g_guest_machine_addr = (ULONG64)guest_memory;
+	
 	return ret;
 }

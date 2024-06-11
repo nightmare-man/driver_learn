@@ -36,11 +36,9 @@
     <ClInclude Include="VMM.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="func.asm">
-      <Filter>Source Files</Filter>
-    </None>
+    <ClInclude Include="EPT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.c">
@@ -52,5 +50,13 @@
     <ClCompile Include="VMM.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="EPT.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="func.asm">
+      <Filter>Source Files</Filter>
+    </MASM>
   </ItemGroup>
 </Project>
