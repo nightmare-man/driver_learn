@@ -188,8 +188,6 @@ BOOLEAN allocate_vmcs(struct VMM_STATE* vmm_state);
 BOOLEAN enable_vmx();
 BOOLEAN init_vmx();
 BOOLEAN leave_vmx();
-ULONG64 vm_ptr_store();
-BOOLEAN clear_vm_state(struct VMM_STATE* vmm_state_ptr);
-BOOLEAN vm_ptr_load(struct VMM_STATE* vmm_state_ptr);
-BOOLEAN launch_vmx(struct VMM_STATE* vmm_state_ptr,int process_id,union EXTENDED_PAGE_TABLE_POINTER* eptp);
+
+BOOLEAN launch_vmx(int process_id,union EXTENDED_PAGE_TABLE_POINTER* eptp);
 VOID vmx_resume_instruction();

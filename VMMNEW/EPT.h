@@ -82,7 +82,7 @@ union PAGE_MAP_LEVEL_1_ENTRY {
 		//用户执行权限，也控制内核
 		ULONG64 reversed2 : 1;
 		ULONG64 referenced_pa : 36;
-		ULONG64 reversed3 : 1;
+		ULONG64 reversed3 : 16;
 	}fields;
 };
 

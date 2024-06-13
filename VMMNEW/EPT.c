@@ -71,7 +71,7 @@ ULONG64 init_eptp() {
 	if (!g_guest_memory) {
 		return NULL;
 	}
-	RtlFillMemory((PVOID)g_guest_memory, 100 * PAGE_SIZE, 0xf4);
+	RtlFillMemory((PVOID)g_guest_memory, 100 , 0xf4);
 	for (int i = 0; i < pages_to_allocate; i++) {
 		pml1_table[i].fields.read_access = 1;
 		pml1_table[i].fields.write_access = 1;

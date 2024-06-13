@@ -15,7 +15,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING reg) {
 	driver->DriverUnload = driver_unload;
 	init_vmx();
 	ULONG64 eptp = init_eptp();
-	launch_vmx(&(g_vmm_state_ptr[0]), 0, eptp);
+	launch_vmx( 0, eptp);
 	KdPrint(("return by launch\n"));
 	return STATUS_SUCCESS;
 }

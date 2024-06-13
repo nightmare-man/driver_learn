@@ -4,6 +4,7 @@ public get_ds
 public get_es
 public get_fs
 public get_gs
+public get_flags
 public get_ldtr
 public get_tr
 public get_gdt_base
@@ -20,6 +21,12 @@ extern main_vmx_exit_handler:proc
 extern vmx_resume_instruction:proc
 .code
 
+get_flags proc
+pushfq
+pop rax
+ret
+get_flags endp
+
 save_host_state proc
 mov g_host_save_rsp, rsp
 mov g_host_save_rbp, rbp
@@ -31,9 +38,9 @@ vmxoff
 mov rsp, g_host_save_rsp
 mov rbp, g_host_save_rbp
 add rsp, 8;跳过压入的launch里的返回地址
-mov rdx, [rsp+48h+10h]
-mov rcx, [rsp+48h+8h]
-add rsp, 40h
+mov rdx, [rsp+58h+10h]
+mov ecx, [rsp+58h+8h]
+add rsp, 50h
 pop rdi
 ret
 restore_host_state endp
@@ -136,14 +143,14 @@ get_idt_base endp
 get_gdt_limit proc
 local gdtr[10]:byte
 sgdt gdtr
-mov rax, qword ptr gdtr[0]
+mov ax, word ptr gdtr[0]
 ret
 get_gdt_limit endp
 
 get_idt_limit proc
 local idtr[10]:byte
 sidt idtr
-mov rax, qword ptr idtr[0]
+mov ax, word ptr idtr[0]
 ret
 get_idt_limit endp
 end

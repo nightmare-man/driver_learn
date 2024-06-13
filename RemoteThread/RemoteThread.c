@@ -27,10 +27,15 @@ void adjust_priviledge(HANDLE token) {
 }
 
 int main() {
+
+	HWND hwnd = FindWindow(NULL, L"魔兽世界");
+	if (hwnd == NULL) {
+		printf("找不到窗口\n");
+		return -1;
+	}
+	DWORD pid = 0;
+	GetWindowThreadProcessId(hwnd, &pid);
 	HANDLE token=GetCurrentProcessToken();
-	DWORD pid=1;
-	scanf_s("%d", &pid);
-	
 	if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token)) {
 		printf("open token sucess\n");
 		adjust_priviledge(token);
@@ -39,6 +44,7 @@ int main() {
 	else {
 		printf("open token fail\n");
 	}
+
 	HANDLE target_proc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
 	if (target_proc) {
 		printf("open proc success\n");
@@ -47,11 +53,6 @@ int main() {
 		printf("last error %d\n", GetLastError());
 		return -1;
 	}
-	if (CreateRemoteThread(target_proc, NULL, 1024, NULL, NULL, 0, NULL)) {
-		printf("inject sucess\n");
-	}
-	else {
-		printf("last error %d\n", GetLastError());
-	}
+
 	return 0;
 }
