@@ -196,7 +196,7 @@ ULONG32 trans_desc_attr_to_access_right(struct SEGMENT_DESCRIPTOR sd) {
 	USHORT sel = sd.SEL;
 	if (sel == 0) {
 		return 0x10000;//if sel is null bit 16 must be 1
-	}
+	}//这个地方非常重要，16位必须置1当 sel为0 典型是ldt sel
 	ULONG32 ret = attr.Fields.TYPE + (attr.Fields.S << 4) +( attr.Fields.DPL << 5)\
 		+ (attr.Fields.P << 7) + (attr.Fields.AVL<<12)+(attr.Fields.L<<13) + (attr.Fields.DB << 14) + ((attr.Fields.G) << 15);
 	return ret;
@@ -326,7 +326,7 @@ BOOLEAN setup_vmcs(struct VMM_STATE* vmm_state_ptr, union EXTENDED_PAGE_TABLE_PO
 	ULONG64 vm_entry_control = 0;
 
 
-	BOOLEAN use_true_msr = (IA32_VMX_BASIC_MSR_VALUE >> 55) & 0x01;
+	BOOLEAN use_true_msr = ((IA32_VMX_BASIC_MSR_VALUE >> 55) & 0x01);
 	
 	ULONG64 pin_based_vm_execution_value = 0;
 	ULONG64 primary_process_based_value = 0;
@@ -340,12 +340,18 @@ BOOLEAN setup_vmcs(struct VMM_STATE* vmm_state_ptr, union EXTENDED_PAGE_TABLE_PO
 	vm_exit_value |= (1ULL << 9); //enable 64bit in host when exit 
 	vm_exit_value |= (1ULL << 15);
 	vm_entry_value |= 1ULL << 9; //enable ia32e mode in guest when entry
-	
+	if (!use_true_msr) {
 		pin_based_vm_execution_reserve_control = __readmsr(IA32_VMX_PINBASED_CTLS);
 		primary_process_based_vm_execution_reverse_control = __readmsr(IA32_VMX_PROCBASED_CTLS);
 		vm_exit_control = __readmsr(IA32_VMX_EXIT_CTLS);
 		vm_entry_control = __readmsr(IA32_VMX_ENTRY_CTLS);
-	
+	}
+	else {
+		pin_based_vm_execution_reserve_control = __readmsr(IA32_VMX_TRUE_PINBASED_CTLS);
+		primary_process_based_vm_execution_reverse_control = __readmsr(IA32_VMX_TRUE_PROCBASED_CTLS);
+		vm_exit_control = __readmsr(IA32_VMX_TRUE_EXIT_CTLS);
+		vm_entry_control = __readmsr(IA32_VMX_TRUE_ENTRY_CTLS);
+	}
 	secondary_process_based_vm_execution_reverse_control = __readmsr(IA32_VMX_PROCBASED_CTLS2);
 
 
@@ -360,8 +366,31 @@ BOOLEAN setup_vmcs(struct VMM_STATE* vmm_state_ptr, union EXTENDED_PAGE_TABLE_PO
 	secondary_process_based_value &= (secondary_process_based_vm_execution_reverse_control >> 32) & 0xffffffffULL;
 	vm_exit_value &= (vm_exit_control >> 32) & 0xffffffffULL;
 	vm_entry_value &= (vm_entry_control >> 32) & 0xffffffffULL;
-
-	
+	/*
+	if (!use_true_msr) {
+		pin_based_vm_execution_value |= 1ULL << 1;//这些位置需要置1
+		pin_based_vm_execution_value |= 1ULL << 2;
+		pin_based_vm_execution_value |= 1ULL << 4;
+		
+		primary_process_based_value |= 1ULL << 1;
+		primary_process_based_value |= 0b111ULL << 4;
+		primary_process_based_value |= 1ULL << 8;
+		primary_process_based_value |= 0b1111 << 13;
+		primary_process_based_value |= 1ULL << 26;
+		
+		vm_exit_value |= 0b111111111ULL;
+		vm_exit_value |= 1ULL << 10;
+		vm_exit_value |= 1ULL << 11;
+		vm_exit_value |= 1ULL << 13;
+		vm_exit_value |= 1ULL << 14;
+		vm_exit_value |= 1ULL << 16;
+		vm_exit_value |= 1ULL << 17;
+		vm_entry_value |= 0b111111111ULL;
+		vm_entry_value |= 1ULL << 12;
+	}
+	  这些不用手动设置，当！user_true_msr时， 对应的msr会在0-31中自动置1
+	  上一步已经包括这些位了
+	*/
 	write_and_log(PIN_BASED_VM_EXEC_CONTROL, pin_based_vm_execution_value);
 	write_and_log(CPU_BASED_VM_EXEC_CONTROL, primary_process_based_value);
 	write_and_log(SECONDARY_VM_EXEC_CONTROL, secondary_process_based_value);
