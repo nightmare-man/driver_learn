@@ -6,7 +6,26 @@
 #define ALIGNED_SIZE 4096
 #define VMM_STACK_SIZE 4096
 
-
+enum VM_EXIT_REASON {
+    //以下这部分是无条件exit 指令
+    EXIT_FOR_CPUID = 10,
+    EXIT_FOR_GETSEC = 11,//用来锁定硬件配置，通常在bios里执行
+    EXIT_FOR_INVD = 13, //使缓存无效指令
+    //以下这部分是无条件，但是与嵌套虚拟化有关
+    EXIT_FOR_VMCALL = 18,
+    EXIT_FOR_VMCLEAR = 19,
+    EXIT_FOR_VMLAUNCH =20,
+    EXIT_FOR_VMPTRLD = 21,
+    EXIT_FOR_VMPTRST =22,
+    EXIT_FOR_VMREAD = 23,
+    EXIT_FOR_VMRESUME = 24,
+    EXIT_FOR_VMWRITE =25,
+    EXIT_FOR_VMXON = 26,
+    EXIT_FOR_VMXOFF = 27,
+    EXIT_FOR_INVEPT = 50,
+    EXIT_FOR_INVVPID = 53,
+    EXIT_FOR_XSETBV = 55,
+};
 
 enum VMCS_FIELDS
 {
@@ -181,6 +200,25 @@ struct SEGMENT_DESCRIPTOR
     ULONG32            LIMIT;
     ULONG64            BASE;
 };
+
+struct register_state {
+    ULONG64 r15;
+    ULONG64 r14;
+    ULONG64 r13;
+    ULONG64 r12;
+    ULONG64 r11;
+    ULONG64 r10;
+    ULONG64 r9;
+    ULONG64 r8;
+    ULONG64 rdi;
+    ULONG64 rsi;
+    ULONG64 rbp;
+    ULONG64 rdx;
+    ULONG64 rcx;
+    ULONG64 rbx;
+    ULONG64 rax;
+};
+
 ULONG64 g_vitual_guest_memory_addr;
 
 BOOLEAN allocate_vmxon(struct VMM_STATE* vmm_state);
@@ -191,3 +229,8 @@ BOOLEAN leave_vmx();
 
 BOOLEAN launch_vmx(int process_id,union EXTENDED_PAGE_TABLE_POINTER* eptp);
 VOID vmx_resume_instruction();
+
+
+VOID allocate_vmm_stack(ULONG cpu_idx);
+VOID allocate_msr_bitmaps(ULONG cpu_idx);
+VOID run_on_cpu(ULONG cpu_idx, VOID(*func)(ULONG64));

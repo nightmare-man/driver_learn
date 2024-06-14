@@ -21,6 +21,7 @@ extern USHORT get_idt_limit();
 extern VOID vmx_exit_handler();
 extern VOID save_host_state();
 extern VOID restore_host_state();
+extern VOID restore_state();
 extern ULONG64 g_guest_memory;
 static BOOLEAN need_off = FALSE;
 extern VOID restore_host_state();
@@ -101,6 +102,17 @@ BOOLEAN enable_vmx() {
 	feature_control.fields.enable_vmx_in_smx = 1;
 	feature_control.fields.enable_vmx_out_smx = 1;
 	__writemsr(IA32_FEATURE_CONTROL_MSR, feature_control.all);
+	/*
+	ULONG64 cr0_fixed0_control = __readmsr(IA32_VMX_CR0_FIXED0);
+	ULONG64 cr0_fixed1_control = __readmsr(IA32_VMX_CR0_FIXED1);
+	ULONG64 cr4_fixed0_control = __readmsr(IA32_VMX_CR4_FIXED0);
+	ULONG64 cr4_fixed1_control = __readmsr(IA32_VMX_CR4_FIXED1);
+	ULONG64 cr0_origin = __readcr0();
+	cr4_origin = __readcr4();
+	
+	这里理解有偏差了，以为这几个fixed msr是要根据它手动设置，实际上
+	它的作用是显示哪些位已经被固定死了，不需要也不能设置了
+	*/
 	return TRUE;
 }
 
@@ -208,14 +220,14 @@ ULONG32 trans_desc_attr_to_access_right(struct SEGMENT_DESCRIPTOR sd) {
 /// <param name="eptp"></param>
 /// <param name="guest_memory"></param>
 /// <returns></returns>
-BOOLEAN setup_vmcs(struct VMM_STATE* vmm_state_ptr, union EXTENDED_PAGE_TABLE_POINTER* eptp, ULONG64 guest_memory) {
+BOOLEAN setup_vmcs(ULONG cpu_idx, ULONG64 rsp) {
 	//guest context
 	write_and_log(GUEST_CR0, __readcr0());
 	write_and_log(GUEST_CR3, __readcr3());
 	write_and_log(GUEST_CR4, __readcr4());
 	write_and_log(GUEST_DR7, 0x400ULL);//硬件调试寄存器
-	write_and_log(GUEST_RSP, guest_memory);
-	write_and_log(GUEST_RIP, guest_memory);
+	write_and_log(GUEST_RSP, rsp);
+	write_and_log(GUEST_RIP, (ULONG64)restore_state);
 	write_and_log(GUEST_RFLAGS, get_flags());
 
 	struct SEGMENT_DESCRIPTOR es = read_normal_segment_descriptor(get_es());
@@ -300,7 +312,7 @@ BOOLEAN setup_vmcs(struct VMM_STATE* vmm_state_ptr, union EXTENDED_PAGE_TABLE_PO
 	write_and_log(HOST_CR0, __readcr0());
 	write_and_log(HOST_CR3, __readcr3());
 	write_and_log(HOST_CR4, __readcr4());
-	write_and_log(HOST_RSP, (ULONG64)vmm_state_ptr->vmm_stack + VMM_STACK_SIZE- 1);
+	write_and_log(HOST_RSP, (ULONG64)g_vmm_state_ptr[cpu_idx].vmm_stack + VMM_STACK_SIZE- 1);
 	write_and_log(HOST_RIP, (ULONG64)vmx_exit_handler);
 	write_and_log(HOST_CS_SELECTOR, get_cs() & 0xf8);
 	write_and_log(HOST_SS_SELECTOR, get_ss() & 0xf8);
@@ -334,9 +346,11 @@ BOOLEAN setup_vmcs(struct VMM_STATE* vmm_state_ptr, union EXTENDED_PAGE_TABLE_PO
 	ULONG64 vm_exit_value = 0;
 	ULONG64 vm_entry_value = 0;		
 
-	primary_process_based_value |= (1ULL << 7);//hlt exit enable;
+	primary_process_based_value |= (1ULL << 28);//use msrbitmaps;
 	primary_process_based_value |= (1ULL << 31);//activate secondary process based control;
 	secondary_process_based_value |= (1ULL << 3); // Enable RDTSCP
+	secondary_process_based_value |= (1ULL << 12);//Enable INVPCID
+	secondary_process_based_value |= (1ULL << 20);// Enable XSAVES / XRSTORS
 	vm_exit_value |= (1ULL << 9); //enable 64bit in host when exit 
 	vm_exit_value |= (1ULL << 15);
 	vm_entry_value |= 1ULL << 9; //enable ia32e mode in guest when entry
@@ -395,27 +409,75 @@ BOOLEAN setup_vmcs(struct VMM_STATE* vmm_state_ptr, union EXTENDED_PAGE_TABLE_PO
 	write_and_log(CPU_BASED_VM_EXEC_CONTROL, primary_process_based_value);
 	write_and_log(SECONDARY_VM_EXEC_CONTROL, secondary_process_based_value);
 	write_and_log(EXCEPTION_BITMAP, 0ULL);
-	write_and_log(MSR_BITMAP, vmm_state_ptr->msr_bitmaps_pa);
+	write_and_log(MSR_BITMAP, g_vmm_state_ptr[cpu_idx].msr_bitmaps_pa);
 	write_and_log(VM_EXIT_CONTROLS, vm_exit_value);
 	write_and_log(VM_ENTRY_CONTROLS, vm_entry_value);
 	return TRUE;
 }
 
-VOID main_vmx_exit_handler() {
-	KdPrint(("vm exit\n"));
+BOOLEAN main_vmx_exit_handler(struct register_state* regs) {
+	//KdPrint(("vm exit\n")); 在root模式下可能执行不了？
 	ULONG64 exit_reason = 0;
 	__vmx_vmread(VM_EXIT_REASON, &exit_reason);
-	exit_reason &= 0xffff;//低16位是粗略原因
+	exit_reason &= 0xffff;//低16位记录原因
 	switch (exit_reason) {
-	case 12:
-		KdPrint(("vm exit for hlt\n"));
-		restore_host_state();
-		break;
+	case EXIT_FOR_CPUID:
+	{
+		int cpu_info[4] = { 0,0,0,0 };
+		__cpuidex(cpu_info, (regs->rax) & 0xffffffff, (regs->rcx) & 0xffffffff);
+		if (regs->rax == 1)
+		{
+			//
+			// Set the Hypervisor Present-bit in RCX, which Intel and AMD have both
+			// reserved for this indication
+			//
+			cpu_info[2] |= 0x80000000;
+		}
 
-	default:
+		else if (regs->rax == 0x40000001)
+		{
+			//
+			// Return our interface identifier
+			//
+			cpu_info[0] = 'HVFS'; // [H]yper[V]isor [F]rom [S]cratch
+		}
+		regs->rax = cpu_info[0];
+		regs->rbx = cpu_info[1];
+		regs->rcx = cpu_info[2];
+		regs->rdx = cpu_info[3];
 		break;
 	}
-	return;
+	
+	case EXIT_FOR_VMCALL:
+	case EXIT_FOR_VMCLEAR:
+	case EXIT_FOR_VMLAUNCH:
+	case EXIT_FOR_VMPTRLD:
+	case EXIT_FOR_VMPTRST :
+	case EXIT_FOR_VMREAD :
+	case EXIT_FOR_VMRESUME:
+	case EXIT_FOR_VMWRITE :
+	case EXIT_FOR_VMXON:
+	case EXIT_FOR_VMXOFF:
+		{
+		//根据文档，这些VM有关的指令，通过修改RFLAGS的某些位，来指示执行后是否
+		//成功，而cf位置1表示vmfailvalid，参数合法，但执行失败
+		
+		ULONG64 rflags = 0;
+		__vmx_vmread(GUEST_RFLAGS, &rflags);
+		__vmx_vmwrite(GUEST_RFLAGS, rflags | 0x1);
+
+		break;
+		}	
+	}
+	ULONG64 ResumeRIP = NULL;
+	ULONG64 CurrentRIP = NULL;
+	ULONG   ExitInstructionLength = 0;
+
+	__vmx_vmread(GUEST_RIP, &CurrentRIP);
+	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &ExitInstructionLength);
+	ResumeRIP = CurrentRIP + ExitInstructionLength;
+	__vmx_vmwrite(GUEST_RIP, ResumeRIP);//指向下一条指令
+	return FALSE;
 }
 
 BOOLEAN launch_vmx(int process_id, union EXTENDED_PAGE_TABLE_POINTER* eptp) {
@@ -493,5 +555,43 @@ VOID vmx_resume_instruction() {
 	// It's such a bad error because we don't where to go!
 	// prefer to break
 	//
+	DbgBreakPoint();
+}
+
+VOID allocate_vmm_stack(ULONG cpu_idx) {
+	ULONG64 stack_va = ExAllocatePoolWithTag(NonPagedPool, VMM_STACK_SIZE, DRIVER_TAG);
+	if (!stack_va) {
+		DbgPrint("allocate stack for vmm fail\n");
+		return;
+	}
+	RtlZeroMemory(stack_va, VMM_STACK_SIZE);
+	g_vmm_state_ptr[cpu_idx].vmm_stack = stack_va;
+}
+
+VOID allocate_msr_bitmaps(ULONG cpu_idx) {
+	ULONG64 msr_bitmaps_va = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, DRIVER_TAG);
+	if (!msr_bitmaps_va) {
+		DbgPrint("allocate msr bitmaps fail\n");
+		return;
+	}
+	RtlZeroMemory(msr_bitmaps_va, PAGE_SIZE);
+	g_vmm_state_ptr[cpu_idx].msr_bitmaps_va = msr_bitmaps_va;
+	g_vmm_state_ptr[cpu_idx].msr_bitmaps_pa = vitual_to_physical(msr_bitmaps_va);
+}
+
+VOID run_on_cpu(ULONG cpu_idx, VOID(*pfunc)(ULONG64)) {
+	
+	KeSetSystemAffinityThread((KAFFINITY)(1 << cpu_idx));
+	KIRQL old_irql = KeRaiseIrqlToDpcLevel();
+	pfunc(cpu_idx);
+	KeLowerIrql(old_irql);
+	KeRevertToUserAffinityThread();//恢复到正常cpu分配
+}
+VOID virtualize_cpu(ULONG cpu_idx, ULONG64 rsp) {
+	__vmx_vmclear(&(g_vmm_state_ptr[cpu_idx].vmcs_pa));
+	__vmx_vmptrld(&(g_vmm_state_ptr[cpu_idx].vmcs_pa));
+	setup_vmcs(cpu_idx, rsp);
+	__vmx_vmlaunch();
+	DbgPrint("launch fail\n");
 	DbgBreakPoint();
 }

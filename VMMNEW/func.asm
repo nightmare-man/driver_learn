@@ -14,12 +14,82 @@ public get_idt_limit
 public vmx_exit_handler
 public save_host_state
 public restore_host_state
+public restore_state
+public save_and_virtualize
+
+
 
 extern g_host_save_rsp:qword
 extern g_host_save_rbp:qword
 extern main_vmx_exit_handler:proc
 extern vmx_resume_instruction:proc
+
+extern virtualize_cpu:proc
+
 .code
+save_and_virtualize proc
+push rax
+push rbx
+push rcx
+push rdx
+push rbp
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+push r14
+push r15
+
+sub rsp, 28h
+mov rdx, rsp
+call virtualize_cpu
+add rsp, 28h;理论上后面不可能被执行到
+;执行virtualize_cpu后就vm entry 切换到guest
+;guest采用另一个函数restore_state来恢复执行
+;vm exit则用 exit_handler 里面通过读vmcs获取guest exit
+;时的rsp rip,来继续执行下一条
+;来resume,要vmoff的时候，也用改rip rsp恢复
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rbp
+pop rdx
+pop rcx
+pop rbx
+pop rax
+ret
+save_and_virtualize endp
+
+restore_state proc
+add rsp,28h
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rbp
+pop rdx
+pop rcx
+pop rbx
+pop rax
+ret
+restore_state endp
 
 get_flags proc
 pushfq
@@ -61,10 +131,13 @@ push r12
 push r13
 push r14
 push r15
+mov rcx, rsp;传递参数
 sub rsp, 28h;这里提前分配40个字节是因为_ccall中 虽然用寄存器传递，但是被调用函数会
 ;将寄存器又放回栈，而使用的空间，就是调用者提前分配的。
 call main_vmx_exit_handler
 add rsp, 28h
+cmp al,1
+je vmx_off_handler
 pop r15
 pop r14
 pop r13
@@ -81,9 +154,21 @@ pop rcx
 pop rbx
 pop rax
 ;sub 100h单纯为了将栈离远点，防止干扰
-sub rsp, 0100h
+sub rsp, 0100h;每次exit时host的 rsp 和rip都是固定的，因此不会一直减少越界
 jmp vmx_resume_instruction
 vmx_exit_handler endp
+
+vmx_off_handler proc
+mov rax,681ch;guest rsp
+mov rbx, 681eh;guest rip
+vmread rax, r8
+vmread rbx, r9;这里不再算下一条指令，前面main_exit_handler里面已经算了，从vmread里读到的已经是下一条
+vmxoff
+mov rsp,r8
+jmp r9
+;恢复 esp jmp eip
+vmx_off_handler endp
+
 
 get_cs proc
 mov rax, cs
