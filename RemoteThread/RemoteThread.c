@@ -2,33 +2,19 @@
 #include <windows.h>
 #include <stdio.h>
 
+
+typedef HMODULE(WINAPI* FuncLoadLibraryW)(LPCWSTR);
+typedef FARPROC(WINAPI* FuncGetProcAddress)(HMODULE, LPCSTR);
+typedef int(WINAPI* FuncMessageBoxW)(HWND, LPCWSTR, LPCWSTR, UINT);
 struct thread_param {
     LPVOID func1;
-    LPVOID func2;
-    WCHAR para1[20];
-    WCHAR para2[20];
-    WCHAR para3[20];
+    WCHAR msg[20];
 };
 
 DWORD WINAPI remote_func(LPVOID param) {
     struct thread_param* p = (struct thread_param*)param;
-    HMODULE(WINAPI * f_load_library)(LPCWSTR);
-    FARPROC(__stdcall * f_get_proc_addr)(HMODULE, LPCSTR);
-    f_load_library = (HMODULE(WINAPI*)(LPCWSTR))p->func1;
-    f_get_proc_addr = (FARPROC(__stdcall*)(HMODULE, LPCSTR))p->func2;
-
-    // Debug prints
-   
-
-    HMODULE module = f_load_library(p->para1);
-  
-
-    FARPROC message_box = f_get_proc_addr(module, (LPCSTR)p->para2);
-  
-
-    int (WINAPI * message_box1)(HWND, LPCWSTR, LPCWSTR, UINT) = (int (WINAPI*)(HWND, LPCWSTR, LPCWSTR, UINT))message_box;
-    message_box1(NULL, p->para3, p->para3, MB_OK);
-
+    FuncLoadLibraryW load = (FuncLoadLibraryW)p->func1;
+    load(p->msg);
     return 0;
 }
 
@@ -40,17 +26,19 @@ void adjust_privilege(HANDLE token) {
         tp.Privileges[0].Luid = luid;
         tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
         if (AdjustTokenPrivileges(token, FALSE, &tp, sizeof(tp), NULL, NULL)) {
-            printf("debug success\n");
+            printf("access debug priviledges success\n");
             return;
         }
     }
-    printf("debug fail\n");
+    printf("access debug priviledges fail\n");
 }
 
 int main() {
-    OutputDebugString(L"test\n");
-    HWND hwnd = FindWindow(NULL, L"");
-   
+    HWND hwnd = FindWindow(NULL, L"新建文本文档.txt - 记事本");
+    if (!hwnd) {
+        printf("找不到窗口\n");
+        return -1;
+    }
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
     HANDLE token;
@@ -72,32 +60,33 @@ int main() {
         return -1;
     }
 
-    DWORD thread_id;
+    
     struct thread_param param;
     param.func1 = (LPVOID)GetProcAddress(GetModuleHandle(L"kernel32.dll"), "LoadLibraryW");
-    param.func2 = (LPVOID)GetProcAddress(GetModuleHandle(L"kernel32.dll"), "GetProcAddress");
-    if (!param.func1) {
-        printf("fail to find\n");
-    }
-    if (!param.func2) {
-        printf("fail to find\n");
-    }
-    wcscpy(param.para1, L"user32.dll");
-    wcscpy(param.para2, L"MessageBoxW");
-    wcscpy(param.para3, L"testbox");
-
-    LPVOID param_remote = VirtualAllocEx(target_proc, NULL, sizeof(struct thread_param), MEM_COMMIT, PAGE_READWRITE);
-    if (!param_remote) {
+   
+    wcscpy_s(param.msg, 20,L"hookme2.dll");
+  
+    LPVOID param_addr_in_remote = VirtualAllocEx(target_proc, NULL, sizeof(struct thread_param), MEM_COMMIT, PAGE_READWRITE);
+    LPVOID func_addr_in_remote = VirtualAllocEx(target_proc, NULL,4096, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if ((!param_addr_in_remote) || (!func_addr_in_remote)) {
         printf("allocate remote mem fail\n");
         return -1;
     }
-    if (!WriteProcessMemory(target_proc, param_remote, &param, sizeof(param), NULL)) {
+    if (!WriteProcessMemory(target_proc, param_addr_in_remote, &param, sizeof(param), NULL)) {
         printf("write remote mem fail\n");
         return -1;
     }
 
+    if (!WriteProcessMemory(target_proc, func_addr_in_remote, &remote_func,4096, NULL)) {
+        printf("write remote mem fail\n");
+        return -1;
+    }
+  
+    printf("remote param addr is 0x%p\n", param_addr_in_remote);
+    printf("remote func addr is 0x%p\n", func_addr_in_remote);
     //远程线程代码和参数都要通过分配内存和写入，才能使用
-    HANDLE hThread = CreateRemoteThread(target_proc, NULL, 4096, remote_func, param_remote, 0, &thread_id);
+    DWORD thread_id;
+    HANDLE hThread = CreateRemoteThread(target_proc, NULL, 4096, (LPTHREAD_START_ROUTINE)func_addr_in_remote, param_addr_in_remote, 0, &thread_id);
     if (!hThread) {
         printf("create remote thread fail: %d\n", GetLastError());
         return -1;
@@ -107,8 +96,6 @@ int main() {
     }
 
     WaitForSingleObject(hThread, INFINITE);
-    CloseHandle(hThread);
-    VirtualFreeEx(target_proc, param_remote, 0, MEM_RELEASE);
-    CloseHandle(target_proc);
+    
     return 0;
 }
