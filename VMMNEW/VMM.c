@@ -19,15 +19,21 @@ extern ULONG64 get_flags();
 extern USHORT get_gdt_limit();
 extern USHORT get_idt_limit();
 extern VOID vmx_exit_handler();
-extern VOID save_host_state();
-extern VOID restore_host_state();
 extern VOID restore_state();
-extern ULONG64 g_guest_memory;
-static BOOLEAN need_off = FALSE;
-extern VOID restore_host_state();
-ULONG64 g_host_save_rsp = 0;
-ULONG64 g_host_save_rbp = 0;
 
+
+ULONG64 g_guest_rsp = 0;
+ULONG64 g_guest_rip = 0;
+
+VOID leave_vmx() {
+	ULONG cpu_count = KeQueryActiveProcessorCount(0);
+	for (ULONG i = 0; i < cpu_count; i++) {
+
+		KeSetSystemAffinityThread((KAFFINITY)(1 << i));
+		__vmx_off();
+		KeRevertToUserAffinityThread();
+	}
+}
 void write_and_log(ULONG64 index, ULONG64 value) {
 	__vmx_vmwrite(index, value);
 	DbgPrint("[%p,%p]\n", index, value);
@@ -129,7 +135,7 @@ BOOLEAN init_vmx() {
 	}
 	KAFFINITY ka;
 	for (ULONG32 i = 0; i < cpu_count; i++) {
-		ka = (KAFFINITY)2 ^ i;//每个处理器的掩码
+		ka = (KAFFINITY)(1 << i);
 		KeSetSystemAffinityThread(ka);
 		enable_vmx();
 		KdPrint(("[prefix] enable vmx success on process %u\n", i));
@@ -140,49 +146,13 @@ BOOLEAN init_vmx() {
 			continue;
 		}
 	}
-	need_off = TRUE;
+	
 	return TRUE;
 }
 
-BOOLEAN leave_vmx() {
-	if (!need_off) {
-		return TRUE;
-	}
-	ULONG32 cpu_count = KeQueryActiveProcessorCount(NULL);
-	KAFFINITY ka;
-	for (ULONG32 i = 0; i < cpu_count; i++) {
-		ka = 2 ^ i;
-		KeSetSystemAffinityThread(ka);
-		__vmx_off();
-		
-		
-		MmFreeContiguousMemory((PVOID)g_vmm_state_ptr[i].vmxon_region_va_unaligned);
-		MmFreeContiguousMemory((PVOID)g_vmm_state_ptr[i].vmcs_va_unaligned);
-	}
-	ExFreePoolWithTag(g_vmm_state_ptr, DRIVER_TAG);
-	return TRUE;
-}
 
-ULONG64 vm_ptr_store() {
-	ULONG64 ret;
-	__vmx_vmptrst(&ret);
-	return ret;
-}
-BOOLEAN clear_vm_state(ULONG64 vmcs) {
-	unsigned char ret = __vmx_vmclear(&vmcs);
-	if (ret != 0) {
-		return FALSE;
-	}
-	return TRUE;
-}
 
-BOOLEAN vm_ptr_load(ULONG64 vmcs) {
-	unsigned char ret = __vmx_vmptrld(&vmcs);
-	if (ret != 0) {
-		return FALSE;
-	}
-	return TRUE;
-}
+
 struct SEGMENT_DESCRIPTOR read_normal_segment_descriptor(USHORT selector) {
 	ULONG64 gdt_base = get_gdt_base();
 	struct SEGMENT_DESCRIPTOR desc = { 0 };
@@ -420,10 +390,17 @@ BOOLEAN main_vmx_exit_handler(struct register_state* regs) {
 	ULONG64 exit_reason = 0;
 	__vmx_vmread(VM_EXIT_REASON, &exit_reason);
 	exit_reason &= 0xffff;//低16位记录原因
+	BOOLEAN ret = FALSE;
 	switch (exit_reason) {
 	case EXIT_FOR_CPUID:
 	{
+		if (regs->rax == 0x87654321 && regs->rcx == 0x12345678) {
+			ret = TRUE;
+			//leave_vmx();
+			break;
+		}
 		int cpu_info[4] = { 0,0,0,0 };
+		//DbgPrint("execute cpuid rax %p, rcx %p\n", regs->rax, regs->rcx);
 		__cpuidex(cpu_info, (regs->rax) & 0xffffffff, (regs->rcx) & 0xffffffff);
 		if (regs->rax == 1)
 		{
@@ -472,75 +449,28 @@ BOOLEAN main_vmx_exit_handler(struct register_state* regs) {
 	ULONG64 ResumeRIP = NULL;
 	ULONG64 CurrentRIP = NULL;
 	ULONG   ExitInstructionLength = 0;
-
+	
 	__vmx_vmread(GUEST_RIP, &CurrentRIP);
 	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &ExitInstructionLength);
 	ResumeRIP = CurrentRIP + ExitInstructionLength;
 	__vmx_vmwrite(GUEST_RIP, ResumeRIP);//指向下一条指令
-	return FALSE;
+	g_guest_rip = ResumeRIP;
+	__vmx_vmread(GUEST_RSP, &g_guest_rsp);
+	return ret;
 }
 
-BOOLEAN launch_vmx(int process_id, union EXTENDED_PAGE_TABLE_POINTER* eptp) {
-	KdPrint(("----launch vmx----\n"));
-	KAFFINITY ka = 2 ^ process_id;
-	KeSetSystemAffinityThread(ka);
-	KdPrint(("current thread is executing in %d logical process\n", process_id));
-	PAGED_CODE();
-	
-	//为VMM分配栈，理论上，开启VMXON就是在VMM了，用的栈是当前的ss rsp，
-	//但是我们希望VMM使用新栈，因此重新分配一个，放在vmcs的host data中，当第一次vm exit后，
-	//使用新分配的作为rsp
-	//需要注意的是，这里需要的vmm_stack 是vmm里的虚拟地址
-	//我们的vmm是windows环境下的驱动程序，因此使用的cr3是系统进程的cr3
-	//因此这里的虚拟地址就是allocate分配下来的地址。
-	//假设我们进入guest后，继续执行剩余的代码，这个时候的windows就是guest了。
-	
-	ULONG64 vmm_stack_va = ExAllocatePoolWithTag(NonPagedPool, VMM_STACK_SIZE, DRIVER_TAG);
-	if (vmm_stack_va==NULL) {
-		KdPrint(("allocate vmm stack fail\n"));
-		return FALSE;
-	}
-	RtlZeroMemory(vmm_stack_va, VMM_STACK_SIZE);
-	g_vmm_state_ptr[0].vmm_stack = vmm_stack_va;
-
-	//分配msrbitmap,根据intel手册， vmcs里保存一个msrbitmap物理内存指针
-	//指向一个4kb的区域
-	ULONG64 msr_bitmap = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, DRIVER_TAG);
-	if (msr_bitmap == NULL) {
-		KdPrint(("allocate msr bitmaps fail\n"));
-		return FALSE;
-	}
-	RtlZeroMemory(msr_bitmap, PAGE_SIZE);
-	g_vmm_state_ptr[0].msr_bitmaps_va = msr_bitmap;
-	g_vmm_state_ptr[0].msr_bitmaps_pa = vitual_to_physical(msr_bitmap);
-
-	if (!clear_vm_state(g_vmm_state_ptr[0].vmcs_pa)) {
-		KdPrint(("clear vmcs fail\n"));
-		return FALSE;
-	}
-	if (!vm_ptr_load(g_vmm_state_ptr[0].vmcs_pa)) {
-		KdPrint(("load vmcs fail\n"));
-		return FALSE;
-	}
-
-	
-	if (!setup_vmcs(&(g_vmm_state_ptr[0]), eptp, g_guest_memory)) {
-		KdPrint(("setup vmcs fail\n"));
-		return FALSE;
-	}
-	save_host_state();
-	KdPrint(("g_guest_rip is %p", g_guest_memory));
-	KdPrint(("g_host_ret_rsp is %p", g_host_save_rsp));
-	DbgBreakPoint();
-	
-	__vmx_vmlaunch();//后面理论上不会被执行，执行就说明launch出问题里
-	ULONG64 ErrorCode = 0;
-	__vmx_vmread(VM_INSTRUCTION_ERROR, &ErrorCode);
-	__vmx_off();
-	DbgPrint("[*] VMLAUNCH Error : 0x%llx\n", ErrorCode);
-	DbgBreakPoint();
-	return FALSE;
+ULONG64 read_guest_rsp() {
+	ULONG64 ret;
+	__vmx_vmread(GUEST_RSP, &ret);
+	return ret;
 }
+
+ULONG64 read_guest_rip() {
+	ULONG64 ret;
+	__vmx_vmread(GUEST_RIP, &ret);
+	return ret;
+}
+
 
 VOID vmx_resume_instruction() {
 	//只有非hlt导致的exit会执行到这
@@ -578,6 +508,7 @@ VOID allocate_msr_bitmaps(ULONG cpu_idx) {
 	g_vmm_state_ptr[cpu_idx].msr_bitmaps_va = msr_bitmaps_va;
 	g_vmm_state_ptr[cpu_idx].msr_bitmaps_pa = vitual_to_physical(msr_bitmaps_va);
 }
+
 
 VOID run_on_cpu(ULONG cpu_idx, VOID(*pfunc)(ULONG64)) {
 	

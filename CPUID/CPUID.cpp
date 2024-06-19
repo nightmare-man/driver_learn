@@ -6,7 +6,7 @@
 int main()
 {
     int cpu_info[4] = { 0 };
-    __cpuidex(cpu_info, 0x40000001, 0x1);
+    __cpuidex(cpu_info, 0x87654321, 0x12345678);
     printf(" info is %d\n", cpu_info[0]);
     return 0;
 }
