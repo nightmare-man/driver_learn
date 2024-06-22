@@ -102,12 +102,17 @@ BOOLEAN enable_vmx() {
 	ULONG64 cr4_origin = __readcr4();
 	cr4_origin |= 1ULL << 13;
 	__writecr4(cr4_origin );
+	/*
 	union FEATURE_CONTROL_MSR feature_control = { .all = 0 };
 	feature_control.all=__readmsr(IA32_FEATURE_CONTROL_MSR);
 	feature_control.fields.lock = 1;
 	feature_control.fields.enable_vmx_in_smx = 1;
 	feature_control.fields.enable_vmx_out_smx = 1;
 	__writemsr(IA32_FEATURE_CONTROL_MSR, feature_control.all);
+		这些是bios固定的，不能再改了，会报错的
+	*/
+
+
 	/*
 	ULONG64 cr0_fixed0_control = __readmsr(IA32_VMX_CR0_FIXED0);
 	ULONG64 cr0_fixed1_control = __readmsr(IA32_VMX_CR0_FIXED1);

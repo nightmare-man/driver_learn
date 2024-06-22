@@ -230,12 +230,12 @@ ret
 get_gs endp
 
 get_ldtr proc
-sldt rax
+sldt ax
 ret
 get_ldtr endp
 
 get_tr proc
-str rax
+str ax
 ret
 get_tr endp
 
