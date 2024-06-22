@@ -11,7 +11,7 @@ NTSTATUS driver_unload(PDRIVER_OBJECT driver) {
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING reg) {
 	/*
-		目前在多核处理器上会卡住，原因猜测在与多核处理器的初始化有特殊之处
+		目前在虚拟机里多核会卡住，但是实体机上不会卡住，单核都没问题
 
 	*/
 	UNREFERENCED_PARAMETER(reg);
