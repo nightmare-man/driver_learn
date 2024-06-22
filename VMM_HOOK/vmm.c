@@ -22,6 +22,7 @@ extern ULONG64 get_gdt_base();
 extern ULONG64 get_idt_base();
 extern ULONG64 get_flags();
 
+
 ULONG g_cpu_count = 0;
 P_VMM_STATE g_vmm_state_ptr = 0;
 BOOLEAN support_vmx() {
@@ -275,6 +276,19 @@ VOID setup_vmcs(ULONG cpu_idx, ULONG64 rsp) {
 	ULONG64 secondary_process_based_value = 0;
 	ULONG64 vm_exit_value = 0;
 	ULONG64 vm_entry_value = 0;
+	//什么是PCID 和VPID?
+	//都是用来实现多个上下文的同一线性地址的同时缓存的id
+	//Processor Context Identify让本来切换cr3就清空缓存变成了，不一定清空，不同进程的同一线性地址，带上
+	//PCID就可以在同一个TLB里共存，而不会冲突
+	//Virtual Processor Identify也是类似：是多个Guest的Guest-pa物理地址到 Host pa的转换中，也能实现多个
+	//guest不冲突
+
+	//两者能够结合使用
+
+	//SLAT和HLAT
+	//Second Liner Address Translation 是虚拟化下的内存控制机制,一般是ept来实现（扩展页表）
+	//Hypervisor Liner Address Translation是虚拟化下加速内存翻译的机制，能够实现guest va直接到host pa,
+	//具体怎么实现的，还没搞清楚
 
 	primary_process_based_value |= (1ULL << 28);//use msrbitmaps;
 	primary_process_based_value |= (1ULL << 31);//activate secondary process based control;
@@ -349,7 +363,20 @@ VOID virtualize_cpu(ULONG idx, ULONG64 rsp) {
 	setup_vmcs(idx, rsp);
 	__vmx_vmlaunch();
 	DbgBreakPoint();
+}
 
+ULONG64 vmm_call_handler(ULONG64 call_number, ULONG64 option_p1, ULONG64 option_p2, ULONG64 option_p3) {
+	UNREFERENCED_PARAMETER(option_p1);
+	UNREFERENCED_PARAMETER(option_p2);
+	UNREFERENCED_PARAMETER(option_p3);
+	ULONG64 ret = (ULONG64)CALL_RET_SUCCESS;
+	switch (call_number) {
+	case CALL_TEST:
+		Log("test call execute success");
+		break;
+	}
+
+	return ret;
 }
 VOID main_exit_handler(PREG_STATE reg_ptr) {
 	ULONG32 exit_reason = 0;
@@ -357,6 +384,11 @@ VOID main_exit_handler(PREG_STATE reg_ptr) {
 	exit_reason &= 0xffff;
 	switch (exit_reason) {
 	case EXIT_FOR_VMCALL:
+	{
+		
+		reg_ptr->rax= vmm_call_handler(reg_ptr->rcx, reg_ptr->rdx, reg_ptr->r8, reg_ptr->r9);
+		break;
+	}
 	case EXIT_FOR_VMCLEAR:
 	case EXIT_FOR_VMLAUNCH:
 	case EXIT_FOR_VMPTRLD:

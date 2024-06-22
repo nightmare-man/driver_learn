@@ -3,7 +3,17 @@
 #define VMXON_REGION_SIZE 4096
 #define VMM_STACK_SIZE 4096
 
-
+enum VMM_CALL_IDX {
+    CALL_TEST=0,
+    CALL_EXEC_EPT_HOOK=1,
+    CALL_INVEPT_SINGLE_CONTEXT=2,
+    CALL_INVEPT_ALL_CONTEXT=3
+};
+enum VMM_CALL_RET {
+    CALL_RET_SUCCESS=0,
+    CALL_RET_FAIL=1,
+    CALL_RET_UNKNOW=2,
+};
 enum VM_EXIT_REASON {
     //以下这部分是无条件exit 指令
     EXIT_FOR_CPUID = 10,
@@ -216,3 +226,4 @@ typedef struct VMM_STATE {
 }* P_VMM_STATE;
 
 BOOLEAN init_vmm();
+extern ULONG64 inline vmm_call(ULONG64 call_number, ULONG64 option_p1, ULONG64 option_p2, ULONG64 option_p3);

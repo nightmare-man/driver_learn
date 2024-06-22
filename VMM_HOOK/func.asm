@@ -14,10 +14,21 @@ PUBLIC get_idt_base
 PUBLIC get_gdt_limit
 PUBLIC get_idt_limit
 PUBLIC get_flags
+PUBLIC vmm_call
+
 extern virtualize_cpu:proc
 extern main_exit_handler:proc
 extern resume_guest:proc
 .CODE
+
+;这个函数是给non root模式下用的
+;参数rcx rdx r8 r9
+;返回值 0 1 2
+vmm_call proc
+vmcall
+ret
+vmm_call endp
+
 get_flags proc
 pushfq
 pop rax
