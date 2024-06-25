@@ -14,7 +14,7 @@ typedef union _PML4E {
 		ULONG64 next_level_table_pa : 40;
 		ULONG64 ignored3 : 12;
 	} field;
-} PML4E;
+} PML4E,*PML4E_PTR;
 
 
 //1有关内存缓存的控制机制，一开始只有MTRRs和 最后一级页表项目上的 PCD(是否缓存)和PWT(缓存写方式)
@@ -54,7 +54,7 @@ typedef union _PML4E_PAGE {
 		ULONG64 suppress_vm_exit : 1;//跟ept violation造成vm exit还是传递virtual exception到guest有关的设置
 
 	} field;
-} PML4E_PAGE;
+} PML4E_PAGE,* PML4E_PAGE_PTR;
 
 typedef union _PML3E {
 	ULONG64 all;
@@ -70,7 +70,7 @@ typedef union _PML3E {
 		ULONG64 next_level_table_pa : 40;
 		ULONG64 ignored3 : 12;
 	}field;
-} PML3E;
+} PML3E,* PML3E_PTR;
 
 typedef union _PML3E_PAGE {
 	ULONG64 all;
@@ -98,7 +98,7 @@ typedef union _PML3E_PAGE {
 		ULONG64 suppress_vm_exit : 1;//跟ept violation造成vm exit还是传递virtual exception到guest有关的设置
 
 	}field;
-} PML3E_PAGE;
+} PML3E_PAGE,* PML3E_PAGE_PTR;
 
 typedef union _PML2E {
 	ULONG64 all;
@@ -114,7 +114,7 @@ typedef union _PML2E {
 		ULONG64 next_level_table_pa : 40;
 		ULONG64 ignored3 : 12;
 	}field;
-} PML2E;
+} PML2E,* PML2E_PTR;
 
 typedef union _PML2E_PAGE {
 	ULONG64 all;
@@ -142,7 +142,7 @@ typedef union _PML2E_PAGE {
 		ULONG64 suppress_vm_exit : 1;//跟ept violation造成vm exit还是传递virtual exception到guest有关的设置
 
 	}field;
-} PML2E_PAGE;
+} PML2E_PAGE,* PML2E_PAGE_PTR;
 
 typedef union _PML1E {
 	ULONG64 all;
@@ -158,7 +158,8 @@ typedef union _PML1E {
 		ULONG64 next_level_table_pa : 40;
 		ULONG64 ignored3 : 12;
 	}field;
-} PML1E;
+} PML1E,* PML1E_PTR;
+
 
 typedef union _PML1E_PAGE {
 	ULONG64 all;
@@ -186,7 +187,7 @@ typedef union _PML1E_PAGE {
 		ULONG64 suppress_vm_exit : 1;//跟ept violation造成vm exit还是传递virtual exception到guest有关的设置
 
 	}field;
-} PML1E_PAGE;
+} PML1E_PAGE,* PML1E_PAGE_PTR;
 
 enum MEM_TYPE {
 	MEM_UC = 0,
@@ -221,7 +222,6 @@ typedef struct _MEM_TYPE_RANGE {
 //和guest 上的ept共同决定有效的缓存方式（出自intel 文档）。
 //因此如果我们要把已经有的host系统降成guest,我们需要把原来的mtrr里的缓存方式都记录下来，用ept
 //重新设置一遍，这个过程中，需要读mtrr
-
 
 
 BOOLEAN init_ept(ULONG64* eptp_ptr);

@@ -299,6 +299,7 @@ VOID setup_vmcs(ULONG cpu_idx, ULONG64 rsp) {
 
 	primary_process_based_value |= (1ULL << 28);//use msrbitmaps;
 	primary_process_based_value |= (1ULL << 31);//activate secondary process based control;
+	secondary_process_based_value |= (1ULL << 1);//enable ept
 	secondary_process_based_value |= (1ULL << 3); // Enable RDTSCP
 	secondary_process_based_value |= (1ULL << 12);//Enable INVPCID
 	secondary_process_based_value |= (1ULL << 20);// Enable XSAVES / XRSTORS
@@ -363,7 +364,11 @@ VOID setup_vmcs(ULONG cpu_idx, ULONG64 rsp) {
 	__vmx_vmwrite(MSR_BITMAP, g_vmm_state_ptr[cpu_idx].msr_bitmap_pa);
 	__vmx_vmwrite(VM_EXIT_CONTROLS, vm_exit_value);
 	__vmx_vmwrite(VM_ENTRY_CONTROLS, vm_entry_value);
-	
+
+	ULONG64 eptp_control_value = g_eptp;
+	eptp_control_value |= 6;//set ept paging struct mem type; wb
+	eptp_control_value |= (3ULL << 3);//set page walk length
+	__vmx_vmwrite(EPT_POINTER, eptp_control_value);
 }
 
 VOID virtualize_cpu(ULONG idx, ULONG64 rsp) {

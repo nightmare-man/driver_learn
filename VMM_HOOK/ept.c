@@ -98,11 +98,66 @@ VOID print_map() {
 		Log("[0x%p,0x%p,%d]", g_range_type_map[i].start, g_range_type_map[i].end, g_range_type_map[i].type);
 	}
 }
+
+BOOLEAN set_ept_table(ULONG64* eptp) {
+	PHYSICAL_ADDRESS pa;
+	pa.QuadPart = MAXULONG64;
+	PML4E_PTR pml4_table = MmAllocateContiguousMemory(PAGE_SIZE, pa);
+	//msdn上保证该分配是页对齐的
+	if (!pml4_table) return FALSE;
+	PML3E_PTR pml3_table = MmAllocateContiguousMemory(PAGE_SIZE, pa);
+	if (!pml3_table) return FALSE;
+	PML2E_PAGE_PTR pml2_page_table = MmAllocateContiguousMemory(PAGE_SIZE*512, pa);
+	if (!pml2_page_table) return FALSE;
+	RtlZeroMemory(pml4_table, PAGE_SIZE);
+	RtlZeroMemory(pml3_table, PAGE_SIZE);
+	RtlZeroMemory(pml2_page_table, PAGE_SIZE*512);
+
+
+	for (ULONG64 pml3_table_idx = 0; pml3_table_idx < 512; pml3_table_idx++) {
+		for (ULONG64 pml2_page_table_idx = 0; pml2_page_table_idx < 512; pml2_page_table_idx++) {
+			PML2E_PAGE_PTR target= &(pml2_page_table[pml3_table_idx * 512 + pml2_page_table_idx]);
+			target->field.read_access = 1;
+			target->field.write_access = 1;
+			target->field.execute_access = 1;
+			if (pml3_table_idx == 0 && pml2_page_table_idx == 0) target->field.ept_memory_type = MEM_UC;
+			else target->field.ept_memory_type = (ULONG64)MEM_WRITE_BACK;
+			target->field.ignore_pat_memory_type = 0;
+			target->field.must_be_one = 1;
+			target->field.access_flag = 0;
+			target->field.dirty_flag = 0;
+			target->field.user_mode_execute_access = 1;
+			target->field.page_pa = pml3_table_idx * 512 * 512 * 4096 + pml2_page_table_idx * 512 * 4096;
+			target->field.verify_guest_paging = 0;
+			target->field.paging_write_access = 0;
+			target->field.supervisor_shadow_stack_access = 0;
+			target->field.suppress_vm_exit = 0;
+		}
+	}
+
+	for (ULONG64 pml3_table_idx = 0; pml3_table_idx < 512; pml3_table_idx++) {
+		PML3E_PTR target = &(pml3_table[pml3_table_idx]);
+		target->field.read_access = 1;
+		target->field.write_access = 1;
+		target->field.execute_access = 1;
+		target->field.access_flag = 0;
+		target->field.user_mode_execute_access = 1;
+		target->field.next_level_table_pa = virtual_to_physic((ULONG64)(&(pml2_page_table[pml3_table_idx * 512]))) / PAGE_SIZE;
+	}
+
+	pml4_table[0].field.read_access = 1;
+	pml4_table[0].field.write_access = 1;
+	pml4_table[0].field.execute_access = 1;
+	pml4_table[0].field.access_flag = 0;
+	pml4_table[0].field.user_mode_execute_access = 1;
+	pml4_table[0].field.next_level_table_pa = virtual_to_physic((ULONG64)pml3_table) / PAGE_SIZE;
+	*eptp = virtual_to_physic((ULONG64)pml4_table);
+	return TRUE;
+}
 BOOLEAN init_ept(ULONG64* eptp_ptr) {
 	UNREFERENCED_PARAMETER(eptp_ptr);
 	if (!check_support_and_enable_mtrr()) return FALSE;
 	if (!read_mem_type_range_map_from_mtrr()) return FALSE;
-	print_map();
+	if (!set_ept_table(eptp_ptr)) return FALSE;
 	return TRUE;
-	
 }
