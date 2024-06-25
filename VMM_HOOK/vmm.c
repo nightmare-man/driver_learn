@@ -4,7 +4,7 @@
 #include "vmm.h"
 #include "msr.h"
 #include "tool.h"
-
+#include "ept.h"
 extern BOOLEAN save_state_and_virtualize(ULONG idx);
 extern VOID restore_state();
 extern VOID vmm_exit_handler();
@@ -22,14 +22,19 @@ extern ULONG64 get_gdt_base();
 extern ULONG64 get_idt_base();
 extern ULONG64 get_flags();
 
-
+ULONG64 g_maximum_pa_size = 0;
 ULONG g_cpu_count = 0;
 P_VMM_STATE g_vmm_state_ptr = 0;
+ULONG64 g_eptp = 0;
 BOOLEAN support_vmx() {
 	return test_cpuid_bit(1, 2, 5);
 }
 
 BOOLEAN enable_vmx() {
+	int cpu_info[4] = { 0 };
+	__cpuidex(cpu_info, 0x80000008, 0);
+	g_maximum_pa_size = (cpu_info[0] & 0xff);
+	Log("cpu maxium addr size is %lu", g_maximum_pa_size);
 	g_cpu_count = KeQueryActiveProcessorCount(NULL);
 	for (ULONG i = 0; i < g_cpu_count; i++) {
 		KAFFINITY ka = (KAFFINITY)(1ULL << i);
@@ -108,6 +113,8 @@ BOOLEAN allocate_resource() {
 	if (!g_vmm_state_ptr) return FALSE;
 	RtlZeroMemory(g_vmm_state_ptr, sizeof(struct VMM_STATE) * g_cpu_count);
 	
+	if (!init_ept(&g_eptp)) return FALSE;
+
 	for (ULONG i = 0; i < g_cpu_count; i++) {
 		KAFFINITY  ka = (KAFFINITY)(1ULL << i);
 		KeSetSystemAffinityThread(ka);
@@ -288,7 +295,7 @@ VOID setup_vmcs(ULONG cpu_idx, ULONG64 rsp) {
 	//SLAT和HLAT
 	//Second Liner Address Translation 是虚拟化下的内存控制机制,一般是ept来实现（扩展页表）
 	//Hypervisor Liner Address Translation是虚拟化下加速内存翻译的机制，能够实现guest va直接到host pa,
-	//具体怎么实现的，还没搞清楚
+	//具体怎么实现的，手册说的比较模糊，只是说是一个不同寻常的线性地址转换机制
 
 	primary_process_based_value |= (1ULL << 28);//use msrbitmaps;
 	primary_process_based_value |= (1ULL << 31);//activate secondary process based control;
