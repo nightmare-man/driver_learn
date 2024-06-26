@@ -28,33 +28,6 @@ typedef union _PML4E {
 //但需要知道影子栈也是保存在内存里。理论上来说，影子栈只能由硬件写入，硬件读取，能不能手动改是设置的，因此
 //这里有个内核级别影子栈是否能够访问的位来控制。具体查看intel cet
 
-typedef union _PML4E_PAGE {
-	ULONG64 all;
-	struct {
-		ULONG64 read_access : 1;
-		ULONG64 write_access : 1;
-		ULONG64 execute_access : 1;
-		ULONG64 ept_memory_type : 3;
-		ULONG64 ignore_pat_memory_type : 1; //两个字段合起来才决定缓存方式，注意，另外有MTRR决定缓存方式，
-		//29.3.7.2 Memory Type Used for Translated Guest-Physical Addresses
-		ULONG64 must_be_one : 1;
-		ULONG64 access_flag : 1;
-		ULONG64 dirty_flag : 1;
-		ULONG64 user_mode_execute_access : 1;
-		ULONG64 ignored1 : 1;
-		ULONG64 reversed1 : 18;
-		ULONG64 page_pa : 22;
-		ULONG64 ignored2 : 5;
-		ULONG64 verify_guest_paging : 1;//是不是要启用guest分页结构验证，也就是说把guest pa处看做gust page struct
-		//要通过这个entry的这个位来决定是否验证
-		ULONG64 paging_write_access : 1;//
-		ULONG64 ignored3 : 1;
-		ULONG64 supervisor_shadow_stack_access : 1;
-		ULONG64 ignored4 : 2;
-		ULONG64 suppress_vm_exit : 1;//跟ept violation造成vm exit还是传递virtual exception到guest有关的设置
-
-	} field;
-} PML4E_PAGE,* PML4E_PAGE_PTR;
 
 typedef union _PML3E {
 	ULONG64 all;
@@ -130,8 +103,8 @@ typedef union _PML2E_PAGE {
 		ULONG64 dirty_flag : 1;
 		ULONG64 user_mode_execute_access : 1;
 		ULONG64 ignored1 : 1;
-		ULONG64 reversed1 : 18;
-		ULONG64 page_pa : 22;
+		ULONG64 reversed1 : 9;
+		ULONG64 page_pa : 31;
 		ULONG64 ignored2 : 5;
 		ULONG64 verify_guest_paging : 1;//是不是要启用guest分页结构验证，也就是说把guest pa处看做gust page struct
 		//要通过这个entry的这个位来决定是否验证
@@ -175,8 +148,7 @@ typedef union _PML1E_PAGE {
 		ULONG64 dirty_flag : 1;
 		ULONG64 user_mode_execute_access : 1;
 		ULONG64 ignored1 : 1;
-		ULONG64 reversed1 : 18;
-		ULONG64 page_pa : 22;
+		ULONG64 page_pa : 40;
 		ULONG64 ignored2 : 5;
 		ULONG64 verify_guest_paging : 1;//是不是要启用guest分页结构验证，也就是说把guest pa处看做gust page struct
 		//要通过这个entry的这个位来决定是否验证

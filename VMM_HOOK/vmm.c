@@ -365,12 +365,13 @@ VOID setup_vmcs(ULONG cpu_idx, ULONG64 rsp) {
 	__vmx_vmwrite(VM_EXIT_CONTROLS, vm_exit_value);
 	__vmx_vmwrite(VM_ENTRY_CONTROLS, vm_entry_value);
 
-	ULONG64 eptp_control_value = g_eptp;
+	ULONG64 eptp_control_value = (ULONG64)PAGE_ALIGN(g_eptp);
 	eptp_control_value |= 6;//set ept paging struct mem type; wb
 	eptp_control_value |= (3ULL << 3);//set page walk length
 	__vmx_vmwrite(EPT_POINTER, eptp_control_value);
+	//ept开启有问题
 }
-
+ 
 VOID virtualize_cpu(ULONG idx, ULONG64 rsp) {
 	setup_vmcs(idx, rsp);
 	__vmx_vmlaunch();
@@ -392,9 +393,23 @@ ULONG64 vmm_call_handler(ULONG64 call_number, ULONG64 option_p1, ULONG64 option_
 }
 VOID main_exit_handler(PREG_STATE reg_ptr) {
 	ULONG32 exit_reason = 0;
+	ULONG64 guest_physic_addr = 0;
 	__vmx_vmread(VM_EXIT_REASON, (size_t*)( & exit_reason));
+
+	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &guest_physic_addr);
 	exit_reason &= 0xffff;
+	//Log("vm exit for %d", exit_reason);
 	switch (exit_reason) {
+	case EXIT_FOR_EPT_MISCONFIG:
+	{
+		Log("ept misconfig,addr is 0x%p", guest_physic_addr);
+		break;
+	}
+	case EXIT_FOR_EPT_VIOLATION:
+	{
+		Log("ept violation,addr is 0x%p", guest_physic_addr);
+		break;
+	}
 	case EXIT_FOR_VMCALL:
 	{
 		

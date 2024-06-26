@@ -18,9 +18,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING register_path) {
 	else {
 		Log("init vmm fail");
 	}
-	if (vmm_call(CALL_TEST, 0, 0, 0) != CALL_RET_SUCCESS) {
-		Log("call fail");
-	}
+
 	
 	return STATUS_SUCCESS;
 }

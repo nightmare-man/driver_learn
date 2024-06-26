@@ -127,7 +127,7 @@ BOOLEAN set_ept_table(ULONG64* eptp) {
 			target->field.access_flag = 0;
 			target->field.dirty_flag = 0;
 			target->field.user_mode_execute_access = 1;
-			target->field.page_pa = pml3_table_idx * 512 * 512 * 4096 + pml2_page_table_idx * 512 * 4096;
+			target->field.page_pa = pml3_table_idx * 512 + pml2_page_table_idx ;
 			target->field.verify_guest_paging = 0;
 			target->field.paging_write_access = 0;
 			target->field.supervisor_shadow_stack_access = 0;
@@ -155,7 +155,6 @@ BOOLEAN set_ept_table(ULONG64* eptp) {
 	return TRUE;
 }
 BOOLEAN init_ept(ULONG64* eptp_ptr) {
-	UNREFERENCED_PARAMETER(eptp_ptr);
 	if (!check_support_and_enable_mtrr()) return FALSE;
 	if (!read_mem_type_range_map_from_mtrr()) return FALSE;
 	if (!set_ept_table(eptp_ptr)) return FALSE;
