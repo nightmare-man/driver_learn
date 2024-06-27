@@ -101,7 +101,10 @@ BOOLEAN allocate_stack(ULONG idx) {
 	return TRUE;
 }
 BOOLEAN allocate_msrbitmap(ULONG idx) {
-	ULONG64 buffer = (ULONG64)ExAllocatePoolZero(NonPagedPool, PAGE_SIZE, DRIVER_TAG);
+	PHYSICAL_ADDRESS pa;
+	pa.QuadPart = MAXULONG64;
+	//根据文档，需要4k对齐
+	ULONG64 buffer = (ULONG64)MmAllocateContiguousMemory(PAGE_SIZE,pa);
 	if (!buffer) return FALSE;
 	RtlZeroMemory((PVOID)buffer, PAGE_SIZE);
 	g_vmm_state_ptr[idx].msr_bitmap_pa = virtual_to_physic(buffer);
@@ -392,13 +395,19 @@ ULONG64 vmm_call_handler(ULONG64 call_number, ULONG64 option_p1, ULONG64 option_
 	return ret;
 }
 VOID main_exit_handler(PREG_STATE reg_ptr) {
+	//经过测试多核虚拟机，会读写标准范围以外的msr，必须要错误处理，同时也需要找到读的msr号码
+	//但正常物理机不会 
+	//猜测之所以多核虚拟机会，是因为他检测到了自己是waremare虚拟机，读写了warmare自定义的msr
+	
+	BOOLEAN next_step = TRUE;
 	ULONG32 exit_reason = 0;
 	ULONG64 guest_physic_addr = 0;
 	__vmx_vmread(VM_EXIT_REASON, (size_t*)( & exit_reason));
 
 	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &guest_physic_addr);
 	exit_reason &= 0xffff;
-	//Log("vm exit for %d", exit_reason);
+	
+	
 	switch (exit_reason) {
 	case EXIT_FOR_EPT_MISCONFIG:
 	{
@@ -408,6 +417,8 @@ VOID main_exit_handler(PREG_STATE reg_ptr) {
 	case EXIT_FOR_EPT_VIOLATION:
 	{
 		Log("ept violation,addr is 0x%p", guest_physic_addr);
+		restore_ept(guest_physic_addr);
+		next_step = FALSE;
 		break;
 	}
 	case EXIT_FOR_VMCALL:
@@ -460,14 +471,16 @@ VOID main_exit_handler(PREG_STATE reg_ptr) {
 		break;
 	}
 	}
-	ULONG64 ResumeRIP = 0;
-	ULONG64 CurrentRIP = 0;
-	ULONG   ExitInstructionLength = 0;
+	if (next_step) {
+		ULONG64 ResumeRIP = 0;
+		ULONG64 CurrentRIP = 0;
+		ULONG   ExitInstructionLength = 0;
 
-	__vmx_vmread(GUEST_RIP, &CurrentRIP);
-	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, (size_t*)( & ExitInstructionLength));
-	ResumeRIP = CurrentRIP + ExitInstructionLength;
-	__vmx_vmwrite(GUEST_RIP, ResumeRIP);//指向下一条指令
+		__vmx_vmread(GUEST_RIP, &CurrentRIP);
+		__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, (size_t*)(&ExitInstructionLength));
+		ResumeRIP = CurrentRIP + ExitInstructionLength;
+		__vmx_vmwrite(GUEST_RIP, ResumeRIP);//指向下一条指令
+	}
 }
 
 VOID resume_guest() {
@@ -522,6 +535,11 @@ BOOLEAN init_vmm() {
 	}
 	if (!allocate_resource()) {
 		Log("allocate context fail");
+		return FALSE;
+	}
+	
+	if (!set_ept_hook(virtual_to_physic((ULONG64)MmAllocateContiguousMemory))) {
+		Log("set hook fail");
 		return FALSE;
 	}
 	if (!setup_resource()) {

@@ -15,11 +15,30 @@ PUBLIC get_gdt_limit
 PUBLIC get_idt_limit
 PUBLIC get_flags
 PUBLIC vmm_call
+PUBLIC asm_single_invept
+
 
 extern virtualize_cpu:proc
 extern main_exit_handler:proc
 extern resume_guest:proc
 .CODE
+asm_single_invept proc
+mov rax,2
+invept rax, oword ptr [rcx]
+jz @jz
+jc @jc
+xor rax,rax
+ret
+
+@jz:
+mov rax,1
+ret
+
+@jc:
+mov rax,2
+ret
+asm_single_invept endp
+
 
 ;这个函数是给non root模式下用的
 ;参数rcx rdx r8 r9

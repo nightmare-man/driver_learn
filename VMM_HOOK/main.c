@@ -17,8 +17,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING register_path) {
 	}
 	else {
 		Log("init vmm fail");
-	}
-
-	
+	}	
+	PHYSICAL_ADDRESS pa = { .QuadPart = MAXULONG64 };
+	ULONG64* target = MmAllocateContiguousMemory(PAGE_SIZE, pa);
+	target[10] = 20;
 	return STATUS_SUCCESS;
 }

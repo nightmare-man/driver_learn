@@ -197,3 +197,5 @@ typedef struct _MEM_TYPE_RANGE {
 
 
 BOOLEAN init_ept(ULONG64* eptp_ptr);
+BOOLEAN set_ept_hook(ULONG64 guest_pa);
+BOOLEAN restore_ept(ULONG64 guest_pa);

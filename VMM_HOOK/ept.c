@@ -5,10 +5,17 @@
 #define DRIVER_TAG 0x99887766
 
 extern ULONG64 g_maximum_pa_size;
+extern ULONG64 g_eptp;
+extern ULONG64 asm_single_invept(void* desc);
+
 ULONG64 g_range_type_count=0;
 ULONG64 g_range_type_real_count = 0;
 ULONG64 g_variable_range_mtrr_count = 0;
+PML1E_PAGE_PTR g_pre_allocate_l1_ptr = NULL;
+
 BOOLEAN g_fixed_range_mtrr_support_and_enable = FALSE;
+
+
 P_MEM_TYPE_RANGE g_range_type_map=NULL;
 enum MEM_TYPE g_default_memtype = MEM_UC;
 
@@ -109,10 +116,14 @@ BOOLEAN set_ept_table(ULONG64* eptp) {
 	if (!pml3_table) return FALSE;
 	PML2E_PAGE_PTR pml2_page_table = MmAllocateContiguousMemory(PAGE_SIZE*512, pa);
 	if (!pml2_page_table) return FALSE;
+
+	g_pre_allocate_l1_ptr = MmAllocateContiguousMemory(PAGE_SIZE, pa);
+	if (!g_pre_allocate_l1_ptr) return FALSE;
+
 	RtlZeroMemory(pml4_table, PAGE_SIZE);
 	RtlZeroMemory(pml3_table, PAGE_SIZE);
 	RtlZeroMemory(pml2_page_table, PAGE_SIZE*512);
-
+	RtlZeroMemory(g_pre_allocate_l1_ptr, PAGE_SIZE);
 
 	for (ULONG64 pml3_table_idx = 0; pml3_table_idx < 512; pml3_table_idx++) {
 		for (ULONG64 pml2_page_table_idx = 0; pml2_page_table_idx < 512; pml2_page_table_idx++) {
@@ -158,5 +169,66 @@ BOOLEAN init_ept(ULONG64* eptp_ptr) {
 	if (!check_support_and_enable_mtrr()) return FALSE;
 	if (!read_mem_type_range_map_from_mtrr()) return FALSE;
 	if (!set_ept_table(eptp_ptr)) return FALSE;
+	return TRUE;
+}
+
+ULONG64 get_level_idx(ULONG64 guest_pa, ULONG64 level) {
+	guest_pa = (guest_pa >> 12);
+	guest_pa = (guest_pa >> ((level - 1) * 9));
+	guest_pa &= 0x1ff;
+	return guest_pa;
+}
+
+PML2E_PTR find_target_entry(ULONG64 guest_pa) {
+	PML4E_PTR pml4_e = (PML4E_PTR)physic_to_virtual((ULONG64)PAGE_ALIGN(g_eptp));
+	PML3E_PTR pml3_e = (PML3E_PTR)physic_to_virtual(\
+		(pml4_e->field.next_level_table_pa * PAGE_SIZE)\
+		+ get_level_idx(guest_pa,3)*8
+	);
+	PML2E_PTR pml2_e = (PML2E_PTR)physic_to_virtual(\
+		(pml3_e->field.next_level_table_pa * PAGE_SIZE)\
+		+ get_level_idx(guest_pa, 2) * 8
+	);
+	return pml2_e;
+}
+
+BOOLEAN set_ept_hook(ULONG64 guest_pa) {
+	Log("target guest pa is 0x%p", guest_pa);
+	PML2E_PTR target = find_target_entry(guest_pa);
+	RtlZeroMemory(target, 8);
+	target->field.read_access = 1;
+	target->field.write_access = 1;
+	target->field.execute_access = 1;
+	target->field.user_mode_execute_access = 1;
+	target->field.next_level_table_pa = virtual_to_physic((ULONG64)g_pre_allocate_l1_ptr) / PAGE_SIZE;
+
+	for (ULONG64 pml1_entry_idx = 0; pml1_entry_idx < 512; pml1_entry_idx++) {
+		PML1E_PAGE_PTR tmp = &g_pre_allocate_l1_ptr[pml1_entry_idx];
+		tmp->field.read_access = 1;
+		tmp->field.write_access = 1;
+		tmp->field.execute_access = 1;
+		tmp->field.ept_memory_type = MEM_WRITE_BACK;
+		tmp->field.user_mode_execute_access = 1;
+		tmp->field.must_be_one = 1;
+		tmp->field.page_pa = ((guest_pa & (~0x1fffffULL)) + pml1_entry_idx * PAGE_SIZE)/PAGE_SIZE;
+		tmp->field.user_mode_execute_access = 1;
+	}
+	
+	PML1E_PAGE_PTR target_l1 = &g_pre_allocate_l1_ptr[get_level_idx(guest_pa, 1)];
+	target_l1->field.execute_access = 0;
+	target_l1->field.user_mode_execute_access = 0;
+	return TRUE;
+}
+
+BOOLEAN restore_ept(ULONG64 guest_pa) {
+	PML1E_PAGE_PTR target_l1 = &g_pre_allocate_l1_ptr[get_level_idx(guest_pa, 1)];
+	target_l1->field.execute_access = 1;
+	target_l1->field.user_mode_execute_access = 1;
+	ULONG64 desc[2] = { (ULONG64)PAGE_ALIGN(g_eptp), 0 };
+	ULONG64 ret = asm_single_invept(desc);
+	if (ret>0) {
+		Log("invept fail with %d", ret);
+		return FALSE;
+	}
 	return TRUE;
 }
