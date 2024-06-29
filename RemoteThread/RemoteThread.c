@@ -64,7 +64,7 @@ int main() {
     struct thread_param param;
     param.func1 = (LPVOID)GetProcAddress(GetModuleHandle(L"kernel32.dll"), "LoadLibraryW");
    
-    wcscpy_s(param.msg, 20,L"hookme2.dll");
+    wcscpy_s(param.msg, 20,L"hookme5.dll");
   
     LPVOID param_addr_in_remote = VirtualAllocEx(target_proc, NULL, sizeof(struct thread_param), MEM_COMMIT, PAGE_READWRITE);
     LPVOID func_addr_in_remote = VirtualAllocEx(target_proc, NULL,4096, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
