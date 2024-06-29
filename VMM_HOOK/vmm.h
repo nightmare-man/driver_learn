@@ -1,11 +1,19 @@
 #pragma once
-#include <ntddk.h>
-#include "EPT.h"
-#define VMXON_SIZE 4096
-#define VMCS_SIZE 4096
-#define ALIGNED_SIZE 4096
+#define DRIVER_TAG 0x99887766
+#define VMXON_REGION_SIZE 4096
 #define VMM_STACK_SIZE 4096
 
+enum VMM_CALL_IDX {
+    CALL_TEST=0,
+    CALL_EXEC_EPT_HOOK=1,
+    CALL_INVEPT_SINGLE_CONTEXT=2,
+    CALL_INVEPT_ALL_CONTEXT=3
+};
+enum VMM_CALL_RET {
+    CALL_RET_SUCCESS=0,
+    CALL_RET_FAIL=1,
+    CALL_RET_UNKNOW=2,
+};
 enum VM_EXIT_REASON {
     //以下这部分是无条件exit 指令
     EXIT_FOR_CPUID = 10,
@@ -14,19 +22,22 @@ enum VM_EXIT_REASON {
     //以下这部分是无条件，但是与嵌套虚拟化有关
     EXIT_FOR_VMCALL = 18,
     EXIT_FOR_VMCLEAR = 19,
-    EXIT_FOR_VMLAUNCH =20,
+    EXIT_FOR_VMLAUNCH = 20,
     EXIT_FOR_VMPTRLD = 21,
-    EXIT_FOR_VMPTRST =22,
+    EXIT_FOR_VMPTRST = 22,
     EXIT_FOR_VMREAD = 23,
     EXIT_FOR_VMRESUME = 24,
-    EXIT_FOR_VMWRITE =25,
+    EXIT_FOR_VMWRITE = 25,
     EXIT_FOR_VMXON = 26,
     EXIT_FOR_VMXOFF = 27,
+    EXIT_FOR_RDMSR = 31,
+    EXIT_FPR_WRMSR = 32,
+    EXIT_FOR_EPT_VIOLATION = 48,
+    EXIT_FOR_EPT_MISCONFIG = 49,
     EXIT_FOR_INVEPT = 50,
     EXIT_FOR_INVVPID = 53,
     EXIT_FOR_XSETBV = 55,
 };
-
 enum VMCS_FIELDS
 {
     GUEST_ES_SELECTOR = 0x00000800,
@@ -162,19 +173,8 @@ enum VMCS_FIELDS
     HOST_RSP = 0x00006c14,
     HOST_RIP = 0x00006c16,
 };
-struct VMM_STATE* g_vmm_state_ptr;
-struct VMM_STATE {
-	ULONG64 vmxon_region_pa;
-	ULONG64 vmcs_pa;
-	ULONG64 vmxon_region_va_unaligned;
-	ULONG64 vmcs_va_unaligned;
-	ULONG64 eptp;
-	ULONG64 vmm_stack;
-	ULONG64 msr_bitmaps_va;
-	ULONG64 msr_bitmaps_pa;
-};
 
-union SEGMENT_ATTRIBUTES
+typedef union _SEGMENT_ATTRIBUTES
 {
     USHORT UCHARs;
     struct
@@ -188,20 +188,20 @@ union SEGMENT_ATTRIBUTES
         USHORT L : 1;   /* 9;  Bit 53 */
         USHORT DB : 1;  /* 10; Bit 54 */
         USHORT G : 1;   /* 11; Bit 55 */
-        
+
 
     } Fields;
-} ;
+} SEGMENT_ATTR;
 
-struct SEGMENT_DESCRIPTOR
+typedef struct _SEGMENT_DESCRIPTOR
 {
     USHORT             SEL;
-    union SEGMENT_ATTRIBUTES ATTRIBUTES;
+    SEGMENT_ATTR ATTRIBUTES;
     ULONG32            LIMIT;
     ULONG64            BASE;
-};
+} SEGMENT_DES;
 
-struct register_state {
+typedef struct register_state {
     ULONG64 r15;
     ULONG64 r14;
     ULONG64 r13;
@@ -217,20 +217,17 @@ struct register_state {
     ULONG64 rcx;
     ULONG64 rbx;
     ULONG64 rax;
-};
+}REG_STATE,*PREG_STATE;
 
-ULONG64 g_vitual_guest_memory_addr;
+typedef struct VMM_STATE {
+	ULONG64 vmx_on_region_va;
+	ULONG64 vmx_on_region_pa;
+	ULONG64 vmcs_va;
+	ULONG64 vmcs_pa;
+	ULONG64 vmm_stack_va;
+	ULONG64 msr_bitmap_pa;
+	ULONG64 eptp_pa;
+}* P_VMM_STATE;
 
-BOOLEAN allocate_vmxon(struct VMM_STATE* vmm_state);
-BOOLEAN allocate_vmcs(struct VMM_STATE* vmm_state);
-BOOLEAN enable_vmx();
-BOOLEAN init_vmx();
-
-
-
-VOID vmx_resume_instruction();
-
-
-VOID allocate_vmm_stack(ULONG cpu_idx);
-VOID allocate_msr_bitmaps(ULONG cpu_idx);
-VOID run_on_cpu(ULONG cpu_idx, VOID(*func)(ULONG64));
+BOOLEAN init_vmm();
+extern ULONG64 inline vmm_call(ULONG64 call_number, ULONG64 option_p1, ULONG64 option_p2, ULONG64 option_p3);

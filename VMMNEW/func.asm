@@ -12,19 +12,22 @@ public get_idt_base
 public get_gdt_limit
 public get_idt_limit
 public vmx_exit_handler
-public save_host_state
-public restore_host_state
+
 public restore_state
 public save_and_virtualize
 
 
 
-extern g_host_save_rsp:qword
-extern g_host_save_rbp:qword
+extern g_guest_rsp:qword
+extern g_guest_rip:qword
 extern main_vmx_exit_handler:proc
 extern vmx_resume_instruction:proc
 
 extern virtualize_cpu:proc
+extern read_guest_rsp:proc
+extern read_guest_rip:proc
+extern leave_vmx:proc
+
 
 .code
 save_and_virtualize proc
@@ -97,23 +100,6 @@ pop rax
 ret
 get_flags endp
 
-save_host_state proc
-mov g_host_save_rsp, rsp
-mov g_host_save_rbp, rbp
-ret
-save_host_state endp
-
-restore_host_state proc
-vmxoff
-mov rsp, g_host_save_rsp
-mov rbp, g_host_save_rbp
-add rsp, 8;跳过压入的launch里的返回地址
-mov rdx, [rsp+58h+10h]
-mov ecx, [rsp+58h+8h]
-add rsp, 50h
-pop rdi
-ret
-restore_host_state endp
 
 vmx_exit_handler proc
 push rax
@@ -158,15 +144,58 @@ sub rsp, 0100h;每次exit时host的 rsp 和rip都是固定的，因此不会一直减少越界
 jmp vmx_resume_instruction
 vmx_exit_handler endp
 
+
 vmx_off_handler proc
-mov rax,681ch;guest rsp
-mov rbx, 681eh;guest rip
-vmread rax, r8
-vmread rbx, r9;这里不再算下一条指令，前面main_exit_handler里面已经算了，从vmread里读到的已经是下一条
-vmxoff
-mov rsp,r8
-jmp r9
-;恢复 esp jmp eip
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rbp
+pop rdx
+pop rcx
+pop rbx
+pop rax
+mov rsp,g_guest_rsp;
+push rax
+push rbx
+push rcx
+push rdx
+push rbp
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+push r14
+push r15
+sub rsp,100h
+call leave_vmx
+add rsp,100h
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rbp
+pop rdx
+pop rcx
+pop rbx
+pop rax
+jmp g_guest_rip;这里jump跳到的目标地址不能是是r3的，因为VMM本身是r0的
 vmx_off_handler endp
 
 
@@ -201,12 +230,12 @@ ret
 get_gs endp
 
 get_ldtr proc
-sldt rax
+sldt ax
 ret
 get_ldtr endp
 
 get_tr proc
-str rax
+str ax
 ret
 get_tr endp
 
