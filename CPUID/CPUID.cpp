@@ -5,9 +5,9 @@
 #include <windows.h>
 int main()
 {
-    int cpu_info[5] = { 0 };
-    __cpuidex(cpu_info, 0x40000001, 0);
-    printf(" info is %s\n", cpu_info);
+    printf("messagebox addr is 0x%p", MessageBoxW);
+    system("pause");
+    MessageBoxW(NULL, L"test", L"test", MB_OK);
     return 0;
 }
 

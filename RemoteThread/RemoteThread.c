@@ -10,7 +10,7 @@ struct thread_param {
     WCHAR para3[20];
 };
 
-DWORD WINAPI remote_func(LPVOID param) {
+DWORD WINAPI my_func(LPVOID param) {
     struct thread_param* p = (struct thread_param*)param;
     HMODULE(WINAPI * f_load_library)(LPCWSTR);
     FARPROC(__stdcall * f_get_proc_addr)(HMODULE, LPCSTR);
@@ -22,13 +22,13 @@ DWORD WINAPI remote_func(LPVOID param) {
 
     HMODULE module = f_load_library(p->para1);
   
-
+    /*
     FARPROC message_box = f_get_proc_addr(module, (LPCSTR)p->para2);
   
 
     int (WINAPI * message_box1)(HWND, LPCWSTR, LPCWSTR, UINT) = (int (WINAPI*)(HWND, LPCWSTR, LPCWSTR, UINT))message_box;
     message_box1(NULL, p->para3, p->para3, MB_OK);
-
+    */
     return 0;
 }
 
@@ -48,11 +48,11 @@ void adjust_privilege(HANDLE token) {
 }
 
 int main() {
-    OutputDebugString(L"test\n");
-    HWND hwnd = FindWindow(NULL, L"");
+    HWND hwnd = FindWindow(NULL, L"Counter-Strike 2");
    
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
+    pid = 13760;
     HANDLE token;
     if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token)) {
         printf("open token success\n");
@@ -82,22 +82,30 @@ int main() {
     if (!param.func2) {
         printf("fail to find\n");
     }
-    wcscpy(param.para1, L"user32.dll");
+    wcscpy(param.para1, L"imgui_hook.dll");
     wcscpy(param.para2, L"MessageBoxW");
     wcscpy(param.para3, L"testbox");
 
     LPVOID param_remote = VirtualAllocEx(target_proc, NULL, sizeof(struct thread_param), MEM_COMMIT, PAGE_READWRITE);
     if (!param_remote) {
-        printf("allocate remote mem fail\n");
+        printf("allocate remote param mem fail\n");
         return -1;
     }
     if (!WriteProcessMemory(target_proc, param_remote, &param, sizeof(param), NULL)) {
         printf("write remote mem fail\n");
         return -1;
     }
-
+    LPVOID func_remote = VirtualAllocEx(target_proc, NULL, 512, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    if (!func_remote) {
+        printf("allocate remote func mem fail\n");
+        return -1;
+    }
+    if (!WriteProcessMemory(target_proc, func_remote,my_func , 512, NULL)) {
+        printf("write remote  func mem fail\n");
+        return -1;
+    }
     //远程线程代码和参数都要通过分配内存和写入，才能使用
-    HANDLE hThread = CreateRemoteThread(target_proc, NULL, 4096, remote_func, param_remote, 0, &thread_id);
+    HANDLE hThread = CreateRemoteThread(target_proc, NULL, 4096, func_remote, param_remote, 0, &thread_id);
     if (!hThread) {
         printf("create remote thread fail: %d\n", GetLastError());
         return -1;
