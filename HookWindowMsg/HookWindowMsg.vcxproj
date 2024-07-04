@@ -21,8 +21,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{74b49347-87d1-47e4-a544-301eba3998d7}</ProjectGuid>
-    <RootNamespace>RemoteThread</RootNamespace>
+    <ProjectGuid>{63b3d215-d2c7-43e3-b92a-b930fac1dbfc}</ProjectGuid>
+    <RootNamespace>HookWindowMsg</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -128,7 +128,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="RemoteThread.c" />
+    <ClCompile Include="HookWindowMsg.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
