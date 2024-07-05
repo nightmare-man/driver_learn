@@ -8,13 +8,14 @@ LPVOID hook_func(LPVOID old_func, LPVOID new_func) {
 	UINT_PTR ret_addr = ((UINT_PTR)old_func - 0x2000);
 	LPVOID tmp_ret = NULL;
 	while (!tmp_ret) {
-		tmp_ret = VirtualAlloc((LPVOID)ret_addr, 1, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		tmp_ret = VirtualAlloc((LPVOID)ret_addr, 32, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 		ret_addr += 0x200;
 	}
 	ret_addr = (UINT_PTR)tmp_ret;
-	WCHAR buffer[40];
-	swprintf(buffer, 200, L"alloc addr is 0x%p\n", ret_addr);
-	OutputDebugString(buffer);
+	
+
+	
+	
 	tmp1 = ret_addr;
 	memcpy_s(origin_start_code, JMP_CODE_LEN, old_func, JMP_CODE_LEN);
 	memcpy_s((LPVOID)ret_addr, JMP_CODE_LEN, origin_start_code, JMP_CODE_LEN);

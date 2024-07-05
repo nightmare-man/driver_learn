@@ -16,20 +16,11 @@ DWORD WINAPI my_func(LPVOID param) {
     HMODULE(WINAPI * f_load_library)(LPCWSTR);
     FARPROC(__stdcall * f_get_proc_addr)(HMODULE, LPCSTR);
     f_load_library = (HMODULE(WINAPI*)(LPCWSTR))p->func1;
-    f_get_proc_addr = (FARPROC(__stdcall*)(HMODULE, LPCSTR))p->func2;
+    
 
-    // Debug prints
-   
-
-    HMODULE module = f_load_library(p->para1);
+    HMODULE module = f_load_library(p->msg);
   
-    /*
-    FARPROC message_box = f_get_proc_addr(module, (LPCSTR)p->para2);
-  
-
-    int (WINAPI * message_box1)(HWND, LPCWSTR, LPCWSTR, UINT) = (int (WINAPI*)(HWND, LPCWSTR, LPCWSTR, UINT))message_box;
-    message_box1(NULL, p->para3, p->para3, MB_OK);
-    */
+    
     return 0;
 }
 
@@ -49,7 +40,7 @@ void adjust_privilege(HANDLE token) {
 }
 
 int main() {
-    HWND hwnd = FindWindow(NULL, L"新建文本文档.txt - 记事本");
+    HWND hwnd = FindWindow(NULL, L"test");
     if (!hwnd) {
         printf("找不到窗口\n");
         return -1;
