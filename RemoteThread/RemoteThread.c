@@ -47,6 +47,7 @@ int main() {
     }
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
+    pid = 33200;
     HANDLE token;
     if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token)) {
         printf("open token success\n");

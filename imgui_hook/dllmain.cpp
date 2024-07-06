@@ -5,6 +5,9 @@
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
 #include "hook.h"
+#include "tool.h"
+
+//有crc校验，tls回调里开启的， 建议直接上ept hook
 #pragma comment(lib, "d3d11.lib")
 typedef HRESULT(__stdcall* PRESENT_FUNC)(IDXGISwapChain* swap_chain, UINT sync_interval, UINT flag);
 
@@ -40,7 +43,6 @@ void render_frame() {
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
-    
     ImGui::Text("nihao");
   
     ImGui::Render();
@@ -48,20 +50,13 @@ void render_frame() {
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
 HRESULT __stdcall my_present(IDXGISwapChain* swap_chain, UINT sync_interval, UINT flag) {
-    if (!has_init_d3d) {
-        if (!init_d3d(swap_chain)) {
-            OutputDebugString(L"init d3d fail\n");
-        }
-        else {
-            L"init d3d success\n";
-        }
-    }
-    render_frame();
+   
     return ret_func(swap_chain, sync_interval, flag);
 }
 DWORD WINAPI thread_start(LPVOID param) {
-    OutputDebugString(L"dll thread start\n");
 
+    OutputDebugString(L"dll thread start\n");
+   
     DXGI_SWAP_CHAIN_DESC scd = {};
     ZeroMemory(&scd, sizeof(scd));
     scd.BufferCount = 1;//1个后台缓冲
@@ -101,17 +96,15 @@ DWORD WINAPI thread_start(LPVOID param) {
     tmp_device->Release();
     tmp_context->Release();
     tmp_swap_chain->Release();
-
+    suspend_or_resume_other_threads(TRUE);
     ret_func = (PRESENT_FUNC)hook_func(old_present_func, my_present);
-    if (ret_func == NULL) {
-        OutputDebugString(L"hook fail\n");
-    }
-    else {
-        OutputDebugString(L"hook success\n");
-    }
+    suspend_or_resume_other_threads(FALSE);
+   
     OutputDebugString(L"dll thread end\n");
     return 0;
 }
+
+
 
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
@@ -121,7 +114,10 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH: {
+        
         CreateThread(NULL, 4096, thread_start, NULL, NULL, NULL);
+        
+        break;
     }
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
