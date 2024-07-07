@@ -7,7 +7,7 @@
 #include "hook.h"
 #include "tool.h"
 
-//有crc校验，tls回调里开启的， 建议直接上ept hook
+
 #pragma comment(lib, "d3d11.lib")
 typedef HRESULT(__stdcall* PRESENT_FUNC)(IDXGISwapChain* swap_chain, UINT sync_interval, UINT flag);
 
@@ -19,6 +19,11 @@ ID3D11Device* g_device;
 ID3D11DeviceContext* g_context;
 DXGI_SWAP_CHAIN_DESC g_swap_desc;
 ID3D11RenderTargetView* g_render_target;
+
+LPCVOID g_module_client_addr = NULL;
+LPCVOID g_module_steam_render_addr = NULL;
+
+
 BOOLEAN init_d3d(IDXGISwapChain* swap) {
     g_swap_chain = swap;
     if (g_swap_chain->GetDevice(__uuidof(ID3D11Device), (void**)&g_device)>0) {
@@ -36,7 +41,6 @@ BOOLEAN init_d3d(IDXGISwapChain* swap) {
     swap_buffer->Release();
     ImGui_ImplDX11_Init(g_device, g_context);
     ImGui_ImplWin32_Init((VOID*)g_swap_desc.OutputWindow);
-    has_init_d3d = TRUE;
     return TRUE;
 }
 void render_frame() {
@@ -51,51 +55,31 @@ void render_frame() {
 }
 HRESULT __stdcall my_present(IDXGISwapChain* swap_chain, UINT sync_interval, UINT flag) {
    
+    if (!has_init_d3d) {
+        init_d3d(swap_chain);
+        has_init_d3d = TRUE;
+    }
+    render_frame();
     return ret_func(swap_chain, sync_interval, flag);
 }
+
+BOOLEAN set_module_addr() {
+    g_module_steam_render_addr = get_module_base_addr(L"gameoverlayrenderer64.dll");
+    g_module_client_addr = get_module_base_addr(L"client.dll");
+    if (!g_module_client_addr || !g_module_steam_render_addr) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
 DWORD WINAPI thread_start(LPVOID param) {
 
     OutputDebugString(L"dll thread start\n");
-   
-    DXGI_SWAP_CHAIN_DESC scd = {};
-    ZeroMemory(&scd, sizeof(scd));
-    scd.BufferCount = 1;//1个后台缓冲
-    scd.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    scd.BufferDesc.Width = 100;
-    scd.BufferDesc.Height = 100;
-    scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    scd.OutputWindow = GetForegroundWindow();
-    scd.SampleDesc.Count = 4;
-    scd.Windowed = TRUE;
-    scd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-    ID3D11Device* tmp_device=NULL;
-    ID3D11DeviceContext* tmp_context=NULL;
-    IDXGISwapChain* tmp_swap_chain=NULL;
-    D3D11CreateDeviceAndSwapChain(
-        NULL,
-        D3D_DRIVER_TYPE_HARDWARE,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        D3D11_SDK_VERSION,
-        &scd,
-        &tmp_swap_chain,
-        &tmp_device,
-        NULL,
-        &tmp_context
-    );
-    if (!tmp_device) {
-        OutputDebugString(L"create device fail\n");
-    }
-    LPVOID virtual_table_addr = *((LPVOID*)tmp_swap_chain);
-    LPVOID old_present_func = *(LPVOID*)((UINT_PTR)virtual_table_addr + 64);
-    WCHAR buffer[30] = {0};
-    swprintf_s(buffer, 30, L"swap 0x%p\n", old_present_func);
-    OutputDebugString(buffer);
-    tmp_device->Release();
-    tmp_context->Release();
-    tmp_swap_chain->Release();
+    
+    if (!set_module_addr()) return -1;
+    LPVOID old_present_func = *(LPVOID*)((UINT_PTR)g_module_steam_render_addr + 0x149be0);
+    WCHAR buffer[40];
+    swprintf_s(buffer, 40, L"present func is 0x%p\n", old_present_func);
     suspend_or_resume_other_threads(TRUE);
     ret_func = (PRESENT_FUNC)hook_func(old_present_func, my_present);
     suspend_or_resume_other_threads(FALSE);
@@ -115,7 +99,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     {
     case DLL_PROCESS_ATTACH: {
         
-        CreateThread(NULL, 4096, thread_start, NULL, NULL, NULL);
+        CreateThread(NULL, 2*1024*1024, thread_start, NULL, NULL, NULL);
         
         break;
     }
