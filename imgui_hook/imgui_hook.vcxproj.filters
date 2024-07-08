@@ -45,10 +45,10 @@
     <ClInclude Include="imstb_truetype.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="imgui_hook\game.h">
+    <ClInclude Include="tool.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="tool.h">
+    <ClInclude Include="game.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -77,10 +77,10 @@
     <ClCompile Include="imgui_widgets.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="imgui_hook\game.cpp">
+    <ClCompile Include="tool.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="tool.cpp">
+    <ClCompile Include="game.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
