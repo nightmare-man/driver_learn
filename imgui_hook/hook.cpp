@@ -1,53 +1,80 @@
 #include <windows.h>
 #include <stdio.h>
 #include "hook.h"
+#include "tool.h"
+#include <unordered_map>
+
+
 #define JMP_CODE_LEN 5
-static unsigned char origin_start_code[JMP_CODE_LEN];
+typedef struct _hook_record {
+	char origin_star_code[JMP_CODE_LEN];
+	UINT_PTR virtual_alloc_addr;
+}hook_record,*p_hook_record;
+std::unordered_map<INT_PTR, p_hook_record> hook_map;
+
 LPVOID hook_func(LPVOID old_func, LPVOID new_func) {
+	
 	UINT_PTR tmp1 = 0, tmp2 = 0;
 	UINT_PTR ret_addr = ((UINT_PTR)old_func - 0x2000);
 	LPVOID tmp_ret = NULL;
 	while (!tmp_ret) {
-		tmp_ret = VirtualAlloc((LPVOID)ret_addr, 32, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		tmp_ret = VirtualAlloc((LPVOID)ret_addr, 32, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 		ret_addr += 0x200;
 	}
 	ret_addr = (UINT_PTR)tmp_ret;
 	
-
-	
-	
 	tmp1 = ret_addr;
-	memcpy_s(origin_start_code, JMP_CODE_LEN, old_func, JMP_CODE_LEN);
-	memcpy_s((LPVOID)ret_addr, JMP_CODE_LEN, origin_start_code, JMP_CODE_LEN);
+	memcpy_s((LPVOID)ret_addr, JMP_CODE_LEN, old_func, JMP_CODE_LEN);
 	ret_addr += JMP_CODE_LEN;
 	*((unsigned char*)ret_addr) = 0xe9;//jmp rel 32
 	ret_addr++;
-	*((INT32*)(ret_addr)) = (INT32)(((UINT_PTR)old_func+5)-(ret_addr+4));//jmpµÄÏà¶ÔÌø×ªÊÇÏà¶ÔjmpµÄÏÂÒ»ÌõµØÖ·¶øÑÔ
+	*((INT32*)(ret_addr)) = (INT32)(((UINT_PTR)old_func+5)-(ret_addr+4));//jmpï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ï¿½jmpï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½
 	ret_addr += 4;
 
 	tmp2 = ret_addr;
-	//ÔÙÀ´Ò»¸ö¼ä½ÓÌø×ª£¬Õâ¸ö¼ä½ÓÌø×ª±È½ÏÌØ±ð£¬µÚÒ»¼¶µÄµØÖ·ÊÇoffsetÐÎÊ½¸ø³öµÄ£¬Ïàµ±µÚÒ»¼¶ÊÇ¼ä½Ó£¬µÚ¶þ¼¶ÊÇÖ±½Ó
+	//ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½È½ï¿½ï¿½Ø±ð£¬µï¿½Ò»ï¿½ï¿½ï¿½Äµï¿½Ö·ï¿½ï¿½offsetï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£ï¿½ï¿½àµ±ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Ç¼ï¿½Ó£ï¿½ï¿½Ú¶ï¿½ï¿½ï¿½ï¿½ï¿½Ö±ï¿½ï¿½
 #ifdef _WIN64
 	unsigned char tmp_jmp_code[] = { 0xff, 0x25, 0x00,0x00,0x00,0x00 };
 	memcpy_s((LPVOID)ret_addr, sizeof(tmp_jmp_code), tmp_jmp_code, sizeof(tmp_jmp_code));
-	//ÕâÀï¸ø³öµÄµÚÒ»¼¶µØÖ·ÊÇÏà¶Ôrip offset0µÄµØÖ·£¬Ò²¾ÍÊÇ½ÓÏÂÀ´µÄµØÖ·
-	//Òò´ËÍùÕâÀïÐ´ÈëÏëÌø×ªµÄµØÖ·
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½rip offset0ï¿½Äµï¿½Ö·ï¿½ï¿½Ò²ï¿½ï¿½ï¿½Ç½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½Ö·
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½Äµï¿½Ö·
 	ret_addr += sizeof(tmp_jmp_code);
 	*((UINT_PTR*)ret_addr) = (UINT_PTR)new_func;
 #else
-	//32Î»ÏÂÓÃÏà¶ÔÌø×ª
+	//32Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ª
 	* ((unsigned char*)ret_addr) = 0xe9;
 	ret_addr++;
 	*((INT32*)ret_addr) = (INT32)((UINT_PTR)new_func - (ret_addr + 4));
 #endif
 
-	//Ô­À´µÄÒ³Ãæ¹À¼ÆÓÐ±£»¤
+	
+	//Ô­ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½
 	DWORD old_pro;
 	if (!VirtualProtect(old_func, JMP_CODE_LEN, PAGE_EXECUTE_READWRITE, &old_pro)) {
 		return NULL;
 	}
+
+	suspend_or_resume_other_threads(TRUE);
 	* ((unsigned char*)old_func) = 0xe9;
 	*((INT32*)((UINT_PTR)old_func + 1)) = (INT32)(tmp2 - ((UINT_PTR)old_func+5));
+	suspend_or_resume_other_threads(FALSE);
 	VirtualProtect(old_func, JMP_CODE_LEN, old_pro, NULL);
+
+
+	p_hook_record new_record = (p_hook_record)malloc(sizeof(hook_record));
+	hook_map[(UINT_PTR)old_func] = new_record;
+	new_record->virtual_alloc_addr = tmp1;
+	memcpy_s(new_record->origin_star_code, JMP_CODE_LEN, (LPVOID)tmp1, JMP_CODE_LEN);
 	return (LPVOID)tmp1;
+}
+LPVOID reset_func(LPVOID old_func) {
+	if (hook_map.find((UINT_PTR)old_func) == hook_map.end()) return NULL;
+	p_hook_record target_record = hook_map[(UINT_PTR)old_func];
+	suspend_or_resume_other_threads(TRUE);
+	memcpy_s(old_func, JMP_CODE_LEN, target_record->origin_star_code, JMP_CODE_LEN);
+	suspend_or_resume_other_threads(FALSE);
+	VirtualFree((LPVOID)target_record->virtual_alloc_addr, 32, MEM_DECOMMIT);
+	hook_map.erase((UINT_PTR)old_func);
+	free(target_record);
+	return old_func;
 }
